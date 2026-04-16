@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kanban Board</title>
+<script src="../data/data.js"></script>
+<style>
+  :root, [data-theme="dark"] {
+    --bg-primary: #0f1923;
+    --bg-secondary: #152232;
+    --bg-tertiary: #1c2e42;
+    --text-primary: #d8dee9;
+    --text-secondary: #7b8da2;
+    --border-color: #243447;
+    --accent: #2f7bbf;
+    --accent-hover: #3d8fd4;
+    --accent-subtle: rgba(47, 123, 191, 0.10);
+    --today-line: #e85d5d;
+    --row-hover: rgba(47, 123, 191, 0.08);
+    --progress-bg: rgba(255,255,255,0.10);
+  }
+  [data-theme="light"] {
+    --bg-primary: #f4f6f9;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #e9edf2;
+    --text-primary: #1a2332;
+    --text-secondary: #5a6a7e;
+    --border-color: #d0d7e0;
+    --accent: #2468a8;
+    --accent-hover: #1b5690;
+    --accent-subtle: rgba(36, 104, 168, 0.08);
+    --today-line: #d94444;
+    --row-hover: rgba(36, 104, 168, 0.06);
+    --progress-bg: rgba(0,0,0,0.08);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  .toolbar h1 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-right: auto;
+    white-space: nowrap;
+  }
+  .toolbar h1 a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    margin-right: 8px;
+    font-size: 16px;
+  }
+  .toolbar h1 a:hover { color: var(--text-primary); }
+
+  .toolbar .search-box {
+    display: flex;
+    align-items: center;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 4px 10px;
+  }
+  .toolbar .search-box input {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    width: 160px;
+    outline: none;
+  }
+  .toolbar .search-box input::placeholder { color: var(--text-secondary); }
+
+  .view-toggle {
+    display: flex;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .view-toggle button {
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-right: 1px solid var(--border-color);
+  }
+  .view-toggle button:last-child { border-right: none; }
+  .view-toggle button:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .view-toggle button.active {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  /* ── Filter ── */
+  .filter-container { position: relative; }
+  .filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .filter-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .filter-btn.has-filter { color: var(--accent); border-color: var(--accent); }
+  .filter-badge {
+    display: none;
+    min-width: 18px; height: 18px; line-height: 18px; text-align: center;
+    font-size: 10px; font-weight: 600; background: var(--accent); color: #fff;
+    border-radius: 9px; padding: 0 5px;
+  }
+  .filter-btn.has-filter .filter-badge { display: inline-block; }
+
+  .filter-dropdown {
+    display: none; position: absolute; top: 100%; right: 0; margin-top: 6px;
+    background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 10px;
+    width: 260px; z-index: 50; box-shadow: 0 12px 36px rgba(0,0,0,0.4);
+    overflow: hidden;
+  }
+  .filter-dropdown.open { display: flex; flex-direction: column; }
+
+  .filter-panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; border-bottom: 1px solid var(--border-color);
+  }
+  .filter-panel-header span { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+  .filter-clear-btn {
+    font-size: 11px; color: var(--text-secondary); background: none; border: none;
+    cursor: pointer; padding: 2px 6px; border-radius: 4px;
+  }
+  .filter-clear-btn:hover { color: var(--accent); background: var(--accent-subtle); }
+
+  .filter-panel-body { max-height: 380px; overflow-y: auto; padding: 6px 0; }
+
+  .filter-section-hdr {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 14px 4px; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-secondary);
+  }
+  .filter-section-hdr .section-actions { display: flex; gap: 2px; }
+  .filter-section-hdr .section-action {
+    font-size: 10px; text-transform: none; letter-spacing: 0; font-weight: 400;
+    color: var(--text-secondary); background: none; border: none; cursor: pointer;
+    padding: 1px 5px; border-radius: 3px;
+  }
+  .filter-section-hdr .section-action:hover { color: var(--accent); background: var(--accent-subtle); }
+
+  .filter-item {
+    display: flex; align-items: center; gap: 10px; padding: 5px 14px;
+    cursor: pointer; user-select: none;
+  }
+  .filter-item:hover { background: var(--accent-subtle); }
+  .filter-check {
+    width: 16px; height: 16px; flex-shrink: 0; border: 1.5px solid var(--border-color);
+    border-radius: 4px; background: transparent; position: relative;
+  }
+  .filter-item.checked .filter-check { background: var(--accent); border-color: var(--accent); }
+  .filter-item.checked .filter-check::after {
+    content: ''; position: absolute; left: 4.5px; top: 1.5px; width: 5px; height: 9px;
+    border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(40deg);
+  }
+  .filter-item-label {
+    font-size: 12.5px; color: var(--text-primary); flex: 1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .filter-item:not(.checked) .filter-item-label { color: var(--text-secondary); }
+  .filter-item-count {
+    font-size: 10px; color: var(--text-secondary); background: var(--bg-tertiary);
+    padding: 1px 6px; border-radius: 8px; min-width: 20px; text-align: center;
+  }
+  .filter-divider { height: 1px; background: var(--border-color); margin: 4px 14px; }
+
+  .theme-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; background: transparent;
+    border: 1px solid var(--border-color); border-radius: 6px;
+    color: var(--text-secondary); cursor: pointer; font-size: 16px; transition: all 0.2s;
+  }
+  .theme-toggle:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .theme-toggle svg { width: 16px; height: 16px; }
+
+  /* ── Stats Bar ── */
+  .stats-bar {
+    display: flex; align-items: center; gap: 24px; padding: 8px 20px;
+    background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);
+    font-size: 12px; color: var(--text-secondary); flex-shrink: 0; flex-wrap: wrap;
+  }
+  .stats-bar .stat-item span { color: var(--text-primary); font-weight: 600; }
+
+  /* ── Kanban Board ── */
+  .board {
+    flex: 1;
+    display: flex;
+    gap: 16px;
+    padding: 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    justify-content: center;
+  }
+
+  .column {
+    flex: 1;
+    min-width: 300px;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .column-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+  }
+  .column-header h2 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .column-header .col-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+  }
+  .column-header .count {
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: var(--bg-primary);
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+
+  .column-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .column-body::-webkit-scrollbar { width: 6px; }
+  .column-body::-webkit-scrollbar-track { background: transparent; }
+  .column-body::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+
+  .card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .card:hover {
+    border-color: var(--accent);
+    background: var(--accent-subtle);
+  }
+
+  .card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .card-color {
+    width: 4px;
+    min-height: 20px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    align-self: stretch;
+  }
+  .card-title {
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.4;
+    flex: 1;
+  }
+
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    padding-left: 12px;
+  }
+  .card-meta .tag {
+    padding: 1px 8px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    white-space: nowrap;
+  }
+
+  .card-progress {
+    margin-top: 8px;
+    padding-left: 12px;
+  }
+  .card-progress-bar {
+    height: 4px;
+    background: var(--progress-bg);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .card-progress-bar .fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s;
+  }
+  .card-progress-label {
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+
+  .card-dates {
+    font-size: 10px;
+    color: var(--text-secondary);
+    padding-left: 12px;
+    margin-top: 6px;
+  }
+
+  /* ── Status indicators ── */
+  .status-overdue { border-left: 3px solid var(--today-line); }
+  .status-due-soon { border-left: 3px solid #FF9800; }
+
+  /* ── Detail Panel ── */
+  .detail-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 100;
+    justify-content: flex-end;
+  }
+  .detail-overlay.open { display: flex; }
+
+  .detail-panel {
+    width: 360px;
+    background: var(--bg-secondary);
+    border-left: 1px solid var(--border-color);
+    padding: 24px;
+    overflow-y: auto;
+    animation: slideIn 0.2s ease;
+  }
+  @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+  .detail-panel h2 {
+    font-size: 16px; margin-bottom: 20px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .detail-panel .close-btn {
+    background: transparent; border: none; color: var(--text-secondary);
+    font-size: 18px; cursor: pointer; padding: 2px 6px; border-radius: 4px;
+  }
+  .detail-panel .close-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+
+  .detail-field { margin-bottom: 14px; }
+  .detail-field label {
+    display: block; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 4px;
+  }
+  .detail-field .value { font-size: 14px; }
+
+  .detail-progress-bar {
+    height: 8px; background: var(--progress-bg); border-radius: 4px;
+    overflow: hidden; margin-top: 4px;
+  }
+  .detail-progress-bar .fill { height: 100%; border-radius: 4px; }
+
+  .detail-deps { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .dep-tag {
+    padding: 2px 8px; background: var(--bg-tertiary); border-radius: 4px;
+    font-size: 11px; color: var(--text-secondary); border: 1px solid var(--border-color);
+  }
+
+  /* ── Drag & Drop ── */
+  .card.dragging { opacity: 0.4; }
+  .column-body.drag-over {
+    background: var(--accent-subtle);
+    outline: 2px dashed var(--accent);
+    outline-offset: -2px;
+    border-radius: 6px;
+  }
+
+  /* ── Group sub-header in column ── */
+  .group-label {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--text-secondary); padding: 6px 4px 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <h1>Kanban Board</h1>
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="Search tasks...">
+  </div>
+  <div class="view-toggle" id="groupToggle">
+    <button data-group="status" class="active">By Status</button>
+    <button data-group="group">By Group</button>
+    <button data-group="assignee">By Assignee</button>
+  </div>
+  <div class="filter-container">
+    <button class="filter-btn" id="filterBtn">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1.5 2h13L9.5 8.5V13l-3 1.5V8.5z"/></svg>
+      Filter<span class="filter-badge" id="filterBadge">0</span>
+    </button>
+    <div class="filter-dropdown" id="filterDropdown"></div>
+  </div>
+</div>
+
+<div class="stats-bar" id="statsBar">
+  <div class="stat-item">Tasks: <span id="statTotal">0</span></div>
+  <div class="stat-item">Completed: <span id="statCompleted">0</span></div>
+  <div class="stat-item">In Progress: <span id="statInProgress">0</span></div>
+  <div class="stat-item">Not Started: <span id="statNotStarted">0</span></div>
+  <div class="stat-item">Overdue: <span id="statOverdue">0</span></div>
+  <div class="stat-item">Avg Progress: <span id="statAvg">0%</span></div>
+</div>
+
+<div class="board" id="board"></div>
+
+<div class="detail-overlay" id="detailOverlay">
+  <div class="detail-panel" id="detailPanel"></div>
+</div>
+
+<script>
+// ─── State ───
+let tasks = [];
+let filteredTasks = [];
+let currentGrouping = 'status';
+let searchTerm = '';
+let activeGroups = new Set();
+let activeAssignees = new Set();
+let draggedTask = null;
+
+// ─── CSV Parsing (same as Gantt) ───
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
+  const result = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]);
+    if (values.length < 4) continue;
+    const row = {};
+    headers.forEach((h, idx) => { row[h] = (values[idx] || '').trim(); });
+    result.push({
+      name: row.task || row.name || row.title || '',
+      group: row.group || row.category || row.phase || 'Ungrouped',
+      assignee: row.assignee || row.owner || row.resource || '',
+      start: new Date(row.start || row.start_date || row.startdate || ''),
+      end: new Date(row.end || row.end_date || row.enddate || row.finish || ''),
+      progress: Math.min(100, Math.max(0, parseInt(row.progress || row.complete || '0', 10) || 0)),
+      dependencies: (row.dependencies || row.deps || row.predecessors || '').split(';').map(s => s.trim()).filter(Boolean),
+      color: null,
+    });
+  }
+  return result.filter(t => t.name && !isNaN(t.start) && !isNaN(t.end));
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
+      else if (ch === '"') { inQuotes = false; }
+      else { current += ch; }
+    } else {
+      if (ch === '"') { inQuotes = true; }
+      else if (ch === ',') { result.push(current); current = ''; }
+      else { current += ch; }
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+// ─── Data ───
+function loadTasks(data) {
+  tasks = data;
+  const groupColors = {};
+  const palette = (function(){const a=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#2f7bbf';return Array(8).fill(a)})();
+  let ci = 0;
+  tasks.forEach(t => {
+    if (!t.color) {
+      if (!groupColors[t.group]) groupColors[t.group] = palette[ci++ % palette.length];
+      t.color = groupColors[t.group];
+    }
+  });
+  activeGroups = new Set(tasks.map(t => t.group));
+  activeAssignees = new Set(tasks.map(t => t.assignee).filter(Boolean));
+  buildFilterDropdown();
+  applyFilters();
+}
+
+function applyFilters() {
+  filteredTasks = tasks.filter(t => {
+    if (!activeGroups.has(t.group)) return false;
+    if (t.assignee && !activeAssignees.has(t.assignee)) return false;
+    if (searchTerm && !t.name.toLowerCase().includes(searchTerm) &&
+        !t.group.toLowerCase().includes(searchTerm) &&
+        !t.assignee.toLowerCase().includes(searchTerm)) return false;
+    return true;
+  });
+  render();
+}
+
+// ─── Utilities ───
+function sanitize(str) {
+  if (!str) return '';
+  const el = document.createElement('span');
+  el.textContent = str;
+  return el.innerHTML;
+}
+
+function formatDate(d) {
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatShortDate(d) {
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function daysBetween(a, b) { return Math.round((b - a) / 86400000); }
+
+function getStatus(t) {
+  if (t.progress >= 100) return 'completed';
+  if (t.progress > 0) return 'in-progress';
+  return 'not-started';
+}
+
+function isOverdue(t) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  return t.progress < 100 && t.end < today;
+}
+
+function isDueSoon(t) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const diff = daysBetween(today, t.end);
+  return t.progress < 100 && diff >= 0 && diff <= 7;
+}
+
+// ─── Rendering ───
+function render() {
+  updateStats();
+  renderBoard();
+}
+
+function updateStats() {
+  const total = filteredTasks.length;
+  const completed = filteredTasks.filter(t => t.progress >= 100).length;
+  const inProgress = filteredTasks.filter(t => t.progress > 0 && t.progress < 100).length;
+  const notStarted = filteredTasks.filter(t => t.progress === 0).length;
+  const overdue = filteredTasks.filter(t => isOverdue(t)).length;
+  const avg = total ? Math.round(filteredTasks.reduce((s, t) => s + t.progress, 0) / total) : 0;
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statCompleted').textContent = completed;
+  document.getElementById('statInProgress').textContent = inProgress;
+  document.getElementById('statNotStarted').textContent = notStarted;
+  document.getElementById('statOverdue').textContent = overdue;
+  document.getElementById('statAvg').textContent = avg + '%';
+}
+
+function renderBoard() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+
+  let columns;
+  if (currentGrouping === 'status') {
+    columns = buildStatusColumns();
+  } else if (currentGrouping === 'group') {
+    columns = buildGroupColumns();
+  } else {
+    columns = buildAssigneeColumns();
+  }
+
+  columns.forEach(col => {
+    const colEl = document.createElement('div');
+    colEl.className = 'column';
+
+    const header = document.createElement('div');
+    header.className = 'column-header';
+    header.innerHTML = `
+      <h2><span class="col-dot" style="background:${sanitize(col.color)}"></span>${sanitize(col.title)}</h2>
+      <span class="count">${col.tasks.length}</span>
+    `;
+    colEl.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'column-body';
+
+    if (currentGrouping === 'status') {
+      const subGroups = {};
+      col.tasks.forEach(t => {
+        if (!subGroups[t.group]) subGroups[t.group] = [];
+        subGroups[t.group].push(t);
+      });
+      Object.keys(subGroups).sort().forEach(g => {
+        const label = document.createElement('div');
+        label.className = 'group-label';
+        label.textContent = g;
+        body.appendChild(label);
+        subGroups[g].forEach(t => body.appendChild(createCard(t)));
+      });
+    } else {
+      col.tasks.forEach(t => body.appendChild(createCard(t)));
+    }
+
+    body.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+    body.addEventListener('dragenter', e => { e.preventDefault(); body.classList.add('drag-over'); });
+    body.addEventListener('dragleave', e => { if (!body.contains(e.relatedTarget)) body.classList.remove('drag-over'); });
+    body.addEventListener('drop', e => {
+      e.preventDefault();
+      body.classList.remove('drag-over');
+      if (!draggedTask) return;
+      if (currentGrouping === 'status') {
+        const title = col.title;
+        if (title === 'Completed') draggedTask.progress = 100;
+        else if (title === 'In Progress') { if (draggedTask.progress >= 100 || draggedTask.progress === 0) draggedTask.progress = 50; }
+        else if (title === 'Not Started') draggedTask.progress = 0;
+      } else if (currentGrouping === 'group') {
+        draggedTask.group = col.title;
+      } else if (currentGrouping === 'assignee') {
+        draggedTask.assignee = col.title === 'Unassigned' ? '' : col.title;
+      }
+      applyFilters();
+    });
+
+    colEl.appendChild(body);
+    board.appendChild(colEl);
+  });
+}
+
+function buildStatusColumns() {
+  const notStarted = filteredTasks.filter(t => t.progress === 0);
+  const inProgress = filteredTasks.filter(t => t.progress > 0 && t.progress < 100);
+  const completed = filteredTasks.filter(t => t.progress >= 100);
+  return [
+    { title: 'Not Started', color: '#7b8da2', tasks: notStarted },
+    { title: 'In Progress', color: '#FF9800', tasks: inProgress },
+    { title: 'Completed', color: '#4CAF50', tasks: completed },
+  ];
+}
+
+function buildGroupColumns() {
+  const groups = {};
+  filteredTasks.forEach(t => {
+    if (!groups[t.group]) groups[t.group] = [];
+    groups[t.group].push(t);
+  });
+  const palette = (function(){const a=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#2f7bbf';return Array(8).fill(a)})();
+  let ci = 0;
+  return Object.keys(groups).sort().map(g => ({
+    title: g,
+    color: groups[g][0]?.color || palette[ci++ % palette.length],
+    tasks: groups[g],
+  }));
+}
+
+function buildAssigneeColumns() {
+  const assignees = {};
+  filteredTasks.forEach(t => {
+    const a = t.assignee || 'Unassigned';
+    if (!assignees[a]) assignees[a] = [];
+    assignees[a].push(t);
+  });
+  const palette = (function(){const a=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#2f7bbf';return Array(8).fill(a)})();
+  let ci = 0;
+  return Object.keys(assignees).sort().map(a => ({
+    title: a,
+    color: palette[ci++ % palette.length],
+    tasks: assignees[a],
+  }));
+}
+
+function createCard(t) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  if (isOverdue(t)) card.classList.add('status-overdue');
+  else if (isDueSoon(t)) card.classList.add('status-due-soon');
+
+  const duration = daysBetween(t.start, t.end) + 1;
+
+  card.innerHTML = `
+    <div class="card-header">
+      <div class="card-color" style="background:${sanitize(t.color)}"></div>
+      <div class="card-title">${sanitize(t.name)}</div>
+    </div>
+    <div class="card-meta">
+      <span class="tag">${sanitize(t.group)}</span>
+      ${t.assignee ? '<span>' + sanitize(t.assignee) + '</span>' : ''}
+    </div>
+    <div class="card-progress">
+      <div class="card-progress-bar"><div class="fill" style="width:${t.progress}%;background:${sanitize(t.color)}"></div></div>
+      <div class="card-progress-label">${t.progress}% &middot; ${duration}d</div>
+    </div>
+    <div class="card-dates">${formatShortDate(t.start)} &mdash; ${formatShortDate(t.end)}${isOverdue(t) ? ' <span style="color:var(--today-line);font-weight:600">OVERDUE</span>' : ''}</div>
+  `;
+
+  card.setAttribute('draggable', 'true');
+  card.addEventListener('dragstart', e => {
+    draggedTask = t;
+    card.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  card.addEventListener('dragend', () => {
+    card.classList.remove('dragging');
+    draggedTask = null;
+    document.querySelectorAll('.column-body.drag-over').forEach(el => el.classList.remove('drag-over'));
+  });
+  card.addEventListener('click', () => showDetail(t));
+  return card;
+}
+
+// ─── Detail Panel ───
+function showDetail(t) {
+  const overlay = document.getElementById('detailOverlay');
+  const panel = document.getElementById('detailPanel');
+  overlay.classList.add('open');
+
+  const duration = daysBetween(t.start, t.end) + 1;
+  const deps = t.dependencies.length > 0
+    ? t.dependencies.map(d => `<span class="dep-tag">${sanitize(d)}</span>`).join('')
+    : '<span style="color:var(--text-secondary);font-size:13px">None</span>';
+
+  panel.innerHTML = `
+    <h2>
+      <span>${sanitize(t.name)}</span>
+      <button class="close-btn" id="closeDetail">&times;</button>
+    </h2>
+    <div class="detail-field">
+      <label>Group</label>
+      <div class="value"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${sanitize(t.color)};vertical-align:middle;margin-right:6px"></span>${sanitize(t.group)}</div>
+    </div>
+    <div class="detail-field">
+      <label>Assignee</label>
+      <div class="value">${sanitize(t.assignee) || '—'}</div>
+    </div>
+    <div class="detail-field">
+      <label>Start Date</label>
+      <div class="value">${formatDate(t.start)}</div>
+    </div>
+    <div class="detail-field">
+      <label>End Date</label>
+      <div class="value">${formatDate(t.end)}</div>
+    </div>
+    <div class="detail-field">
+      <label>Duration</label>
+      <div class="value">${duration} day${duration !== 1 ? 's' : ''}</div>
+    </div>
+    <div class="detail-field">
+      <label>Progress</label>
+      <div class="value">${t.progress}%</div>
+      <div class="detail-progress-bar"><div class="fill" style="width:${t.progress}%;background:${sanitize(t.color)}"></div></div>
+    </div>
+    <div class="detail-field">
+      <label>Status</label>
+      <div class="value">${t.progress >= 100 ? 'Completed' : t.progress > 0 ? 'In Progress' : 'Not Started'}${isOverdue(t) ? ' — <span style="color:var(--today-line)">Overdue</span>' : ''}</div>
+    </div>
+    <div class="detail-field">
+      <label>Dependencies</label>
+      <div class="detail-deps">${deps}</div>
+    </div>
+  `;
+
+  document.getElementById('closeDetail').addEventListener('click', () => {
+    overlay.classList.remove('open');
+  });
+}
+
+// ─── Filter Panel ───
+function buildFilterDropdown() {
+  const dropdown = document.getElementById('filterDropdown');
+  const groups = [...new Set(tasks.map(t => t.group))].sort();
+  const assignees = [...new Set(tasks.map(t => t.assignee).filter(Boolean))].sort();
+
+  const groupCounts = {};
+  const assigneeCounts = {};
+  tasks.forEach(t => {
+    groupCounts[t.group] = (groupCounts[t.group] || 0) + 1;
+    if (t.assignee) assigneeCounts[t.assignee] = (assigneeCounts[t.assignee] || 0) + 1;
+  });
+
+  dropdown.innerHTML = '';
+
+  const hdr = document.createElement('div');
+  hdr.className = 'filter-panel-header';
+  hdr.innerHTML = '<span>Filters</span>';
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'filter-clear-btn';
+  clearBtn.textContent = 'Reset All';
+  clearBtn.addEventListener('click', () => {
+    groups.forEach(g => activeGroups.add(g));
+    assignees.forEach(a => activeAssignees.add(a));
+    buildFilterDropdown();
+    applyFilters();
+  });
+  hdr.appendChild(clearBtn);
+  dropdown.appendChild(hdr);
+
+  const body = document.createElement('div');
+  body.className = 'filter-panel-body';
+
+  function buildSection(label, items, counts, activeSet) {
+    const sHdr = document.createElement('div');
+    sHdr.className = 'filter-section-hdr';
+    sHdr.innerHTML = `<span>${label}</span>`;
+    const actions = document.createElement('span');
+    actions.className = 'section-actions';
+    const allBtn = document.createElement('button');
+    allBtn.className = 'section-action';
+    allBtn.textContent = 'All';
+    allBtn.addEventListener('click', () => { items.forEach(v => activeSet.add(v)); buildFilterDropdown(); applyFilters(); });
+    const noneBtn = document.createElement('button');
+    noneBtn.className = 'section-action';
+    noneBtn.textContent = 'None';
+    noneBtn.addEventListener('click', () => { activeSet.clear(); buildFilterDropdown(); applyFilters(); });
+    actions.appendChild(allBtn);
+    actions.appendChild(noneBtn);
+    sHdr.appendChild(actions);
+    body.appendChild(sHdr);
+
+    items.forEach(val => {
+      const row = document.createElement('div');
+      row.className = 'filter-item' + (activeSet.has(val) ? ' checked' : '');
+      row.innerHTML = `<span class="filter-check"></span><span class="filter-item-label">${sanitize(val)}</span><span class="filter-item-count">${counts[val] || 0}</span>`;
+      row.addEventListener('click', () => {
+        if (activeSet.has(val)) activeSet.delete(val); else activeSet.add(val);
+        buildFilterDropdown(); applyFilters();
+      });
+      body.appendChild(row);
+    });
+  }
+
+  buildSection('Groups', groups, groupCounts, activeGroups);
+  if (assignees.length) {
+    const divider = document.createElement('div');
+    divider.className = 'filter-divider';
+    body.appendChild(divider);
+    buildSection('Assignees', assignees, assigneeCounts, activeAssignees);
+  }
+
+  dropdown.appendChild(body);
+  updateFilterBtnState(groups, assignees);
+}
+
+function updateFilterBtnState(groups, assignees) {
+  const btn = document.getElementById('filterBtn');
+  const badge = document.getElementById('filterBadge');
+  const allGroups = groups || [...new Set(tasks.map(t => t.group))].sort();
+  const allAssignees = assignees || [...new Set(tasks.map(t => t.assignee).filter(Boolean))].sort();
+  const hidden = allGroups.filter(g => !activeGroups.has(g)).length +
+                 allAssignees.filter(a => !activeAssignees.has(a)).length;
+  btn.classList.toggle('has-filter', hidden > 0);
+  badge.textContent = hidden;
+}
+
+// ─── Events ───
+document.getElementById('groupToggle').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-group]');
+  if (!btn) return;
+  document.querySelectorAll('#groupToggle button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentGrouping = btn.dataset.group;
+  render();
+});
+
+document.getElementById('searchInput').addEventListener('input', e => {
+  searchTerm = e.target.value.toLowerCase();
+  applyFilters();
+});
+
+document.getElementById('filterBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('filterDropdown').classList.toggle('open');
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.filter-container')) {
+    document.getElementById('filterDropdown').classList.remove('open');
+  }
+  if (e.target.id === 'detailOverlay') {
+    document.getElementById('detailOverlay').classList.remove('open');
+  }
+});
+
+// ─── Theme ───
+(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('gantt_theme') || 'dark'); })();
+
+// ─── Init (same date offset logic as Gantt) ───
+if (window.__GANTT_CSV__) {
+  const data = parseCSV(window.__GANTT_CSV__);
+  if (data.length > 0) {
+    const minMs = Math.min(...data.map(t => t.start.getTime()));
+    const maxMs = Math.max(...data.map(t => t.end.getTime()));
+    const pointAt32 = minMs + (maxMs - minMs) * 0.32;
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const shiftMs = now.getTime() - pointAt32;
+    data.forEach(t => {
+      t.start = new Date(t.start.getTime() + shiftMs);
+      t.end = new Date(t.end.getTime() + shiftMs);
+    });
+    loadTasks(data);
+  }
+}
+
+render();
+</script>
+</body>
+</html>

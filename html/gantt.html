@@ -1,0 +1,1775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gantt Chart Viewer</title>
+<script src="../data/data.js"></script>
+<style>
+  :root, [data-theme="dark"] {
+    --bg-primary: #0f1923;
+    --bg-secondary: #152232;
+    --bg-tertiary: #1c2e42;
+    --text-primary: #d8dee9;
+    --text-secondary: #7b8da2;
+    --border-color: #243447;
+    --accent: #2f7bbf;
+    --accent-hover: #3d8fd4;
+    --accent-subtle: rgba(47, 123, 191, 0.10);
+    --today-line: #e85d5d;
+    --row-hover: rgba(47, 123, 191, 0.08);
+    --progress-bg: rgba(255,255,255,0.10);
+  }
+  [data-theme="light"] {
+    --bg-primary: #f4f6f9;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #e9edf2;
+    --text-primary: #1a2332;
+    --text-secondary: #5a6a7e;
+    --border-color: #d0d7e0;
+    --accent: #2468a8;
+    --accent-hover: #1b5690;
+    --accent-subtle: rgba(36, 104, 168, 0.08);
+    --today-line: #d94444;
+    --row-hover: rgba(36, 104, 168, 0.06);
+    --progress-bg: rgba(0,0,0,0.08);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  .toolbar h1 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-right: auto;
+    white-space: nowrap;
+  }
+
+  .toolbar label.file-btn { display: none; }
+  .toolbar label.file-btn:hover { background: var(--accent-hover); }
+  .toolbar label.file-btn input { display: none; }
+
+  .view-toggle {
+    display: flex;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .view-toggle button {
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-right: 1px solid var(--border-color);
+  }
+  .view-toggle button:last-child { border-right: none; }
+  .view-toggle button:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .view-toggle button.active {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .toolbar .search-box {
+    display: flex;
+    align-items: center;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 4px 10px;
+  }
+  .toolbar .search-box input {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    width: 160px;
+    outline: none;
+  }
+  .toolbar .search-box input::placeholder { color: var(--text-secondary); }
+
+  .btn-today {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-today:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+
+  /* ── Stats Bar ── */
+  .stats-bar {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 8px 20px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .stats-bar .stat-item span { color: var(--text-primary); font-weight: 600; }
+
+  /* ── Main Layout ── */
+  .main-container {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ── Task List (Left Panel) ── */
+  .task-panel {
+    width: 340px;
+    min-width: 240px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+  }
+
+  .task-panel-header {
+    display: grid;
+    grid-template-columns: 1fr 80px 80px;
+    padding: 0 12px;
+    height: 44px;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+    flex-shrink: 0;
+  }
+
+  .task-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .task-row {
+    display: grid;
+    grid-template-columns: 1fr 80px 80px;
+    align-items: center;
+    padding: 0 12px;
+    height: 40px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .task-row:hover { background: var(--row-hover); }
+  .task-row.selected { background: var(--accent-subtle); }
+
+  .task-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+  }
+  .task-name .color-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .task-name span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .task-row .progress-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+  }
+  .task-row .assignee-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── Resize Handle ── */
+  .resize-handle {
+    width: 4px;
+    cursor: col-resize;
+    background: transparent;
+    flex-shrink: 0;
+    transition: background 0.2s;
+  }
+  .resize-handle:hover, .resize-handle.dragging {
+    background: var(--accent);
+  }
+
+  /* ── Chart Area ── */
+  .chart-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .chart-header {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    flex-shrink: 0;
+  }
+
+  .chart-header-row {
+    display: flex;
+    height: 22px;
+  }
+
+  .header-cell {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 0 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: inset -1px 0 0 var(--border-color);
+  }
+  .header-cell.today { color: var(--today-line); font-weight: 600; }
+
+  .chart-body-wrapper {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+  }
+
+  .chart-body {
+    position: relative;
+  }
+
+  .chart-grid-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--border-color);
+    pointer-events: none;
+  }
+
+  .chart-today-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--today-line);
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  .chart-row {
+    position: relative;
+    height: 40px;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .chart-row:hover { background: var(--row-hover); }
+
+  .bar-container {
+    position: absolute;
+    top: 8px;
+    height: 24px;
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: filter 0.15s;
+    display: flex;
+    align-items: center;
+    min-width: 4px;
+  }
+  .bar-container:hover { filter: brightness(1.2); }
+
+  .bar-progress {
+    height: 100%;
+    border-radius: 4px 0 0 4px;
+    opacity: 1;
+  }
+  .bar-remaining {
+    height: 100%;
+    flex: 1;
+    opacity: 0.35;
+  }
+
+  .bar-label {
+    position: absolute;
+    left: 8px;
+    top: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    font-size: 11px;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  /* ── Detail Panel ── */
+  .detail-panel {
+    width: 0;
+    overflow: hidden;
+    background: var(--bg-secondary);
+    border-left: 1px solid var(--border-color);
+    transition: width 0.25s ease;
+    flex-shrink: 0;
+  }
+  .detail-panel.open { width: 300px; }
+
+  .detail-content {
+    padding: 20px;
+    width: 300px;
+  }
+
+  .detail-content h2 {
+    font-size: 16px;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .detail-content h2 .close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .detail-content h2 .close-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+
+  .detail-field {
+    margin-bottom: 14px;
+  }
+  .detail-field label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+  }
+  .detail-field .value {
+    font-size: 14px;
+  }
+
+  .detail-progress-bar {
+    height: 8px;
+    background: var(--progress-bg);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .detail-progress-bar .fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s;
+  }
+
+  .detail-deps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+  }
+  .detail-deps .dep-tag {
+    padding: 2px 8px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+  }
+
+  /* ── Drop zone ── */
+  .drop-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--accent-subtle);
+    border: 3px dashed var(--accent);
+    display: none;
+    z-index: 100;
+    justify-content: center;
+    align-items: center;
+    font-size: 20px;
+    color: var(--accent);
+    pointer-events: none;
+  }
+  .drop-overlay.visible { display: flex; }
+
+  /* ── Empty state ── */
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: var(--text-secondary);
+  }
+  .empty-state svg { opacity: 0.4; }
+  .empty-state p { font-size: 14px; }
+
+  /* ── Group header ── */
+  .group-header {
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    height: 30px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+  }
+  .group-header:hover { background: var(--accent-subtle); }
+  .group-header .arrow {
+    margin-right: 8px;
+    transition: transform 0.2s;
+    font-size: 10px;
+  }
+  .group-header .arrow.collapsed { transform: rotate(-90deg); }
+
+  .chart-group-header {
+    height: 30px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+  }
+
+  /* ── Scrollbar sync ── */
+  .task-list::-webkit-scrollbar,
+  .chart-body-wrapper::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .task-list::-webkit-scrollbar-track,
+  .chart-body-wrapper::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+  }
+  .task-list::-webkit-scrollbar-thumb,
+  .chart-body-wrapper::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+  }
+
+  /* ── Filter Panel ── */
+  .filter-container {
+    position: relative;
+  }
+  .filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .filter-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .filter-btn.has-filter { color: var(--accent); border-color: var(--accent); }
+  .filter-badge {
+    display: none;
+    min-width: 18px;
+    height: 18px;
+    line-height: 18px;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 9px;
+    padding: 0 5px;
+  }
+  .filter-btn.has-filter .filter-badge { display: inline-block; }
+
+  .filter-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 6px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    width: 280px;
+    z-index: 50;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04);
+    overflow: hidden;
+  }
+  .filter-dropdown.open { display: flex; flex-direction: column; }
+
+  .filter-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .filter-panel-header span {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 0.2px;
+  }
+  .filter-clear-btn {
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.15s;
+  }
+  .filter-clear-btn:hover { color: var(--accent); background: var(--accent-subtle); }
+
+  .filter-panel-body {
+    max-height: 380px;
+    overflow-y: auto;
+    padding: 6px 0;
+  }
+  .filter-panel-body::-webkit-scrollbar { width: 5px; }
+  .filter-panel-body::-webkit-scrollbar-track { background: transparent; }
+  .filter-panel-body::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+
+  .filter-section-hdr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 14px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-secondary);
+    user-select: none;
+  }
+  .filter-section-hdr .section-actions {
+    display: flex; gap: 2px;
+  }
+  .filter-section-hdr .section-action {
+    font-size: 10px;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 1px 5px;
+    border-radius: 3px;
+    transition: all 0.15s;
+  }
+  .filter-section-hdr .section-action:hover {
+    color: var(--accent);
+    background: var(--accent-subtle);
+  }
+
+  .filter-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 14px;
+    cursor: pointer;
+    transition: background 0.1s;
+    user-select: none;
+  }
+  .filter-item:hover { background: var(--accent-subtle); }
+
+  .filter-check {
+    position: relative;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    border: 1.5px solid var(--border-color);
+    border-radius: 4px;
+    transition: all 0.15s;
+    background: transparent;
+  }
+  .filter-item.checked .filter-check {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .filter-item.checked .filter-check::after {
+    content: '';
+    position: absolute;
+    left: 4.5px;
+    top: 1.5px;
+    width: 5px;
+    height: 9px;
+    border: solid #fff;
+    border-width: 0 1.5px 1.5px 0;
+    transform: rotate(40deg);
+  }
+
+  .filter-item-label {
+    font-size: 12.5px;
+    color: var(--text-primary);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .filter-item:not(.checked) .filter-item-label {
+    color: var(--text-secondary);
+  }
+
+  .filter-item-count {
+    font-size: 10px;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    padding: 1px 6px;
+    border-radius: 8px;
+    min-width: 20px;
+    text-align: center;
+  }
+
+  /* ── Theme Toggle ── */
+  .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .theme-toggle:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .theme-toggle svg { width: 16px; height: 16px; }
+
+  .filter-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 4px 14px;
+  }
+</style>
+</head>
+<body>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <h1>Gantt Chart</h1>
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="Search tasks...">
+  </div>
+  <div class="view-toggle" id="viewToggle">
+    <button data-view="day">Day</button>
+    <button data-view="week" class="active">Week</button>
+    <button data-view="month">Month</button>
+    <button data-view="quarter">Quarter</button>
+    <button data-view="year">Year</button>
+  </div>
+  <button class="btn-today" id="btnToday">Today</button>
+  <div class="filter-container">
+    <button class="filter-btn" id="filterBtn"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1.5 2h13L9.5 8.5V13l-3 1.5V8.5z"/></svg>Filter<span class="filter-badge" id="filterBadge">0</span></button>
+    <div class="filter-dropdown" id="filterDropdown"></div>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-bar" id="statsBar">
+  <div class="stat-item">Tasks: <span id="statTotal">0</span></div>
+  <div class="stat-item">Completed: <span id="statCompleted">0</span></div>
+  <div class="stat-item">In Progress: <span id="statInProgress">0</span></div>
+  <div class="stat-item">Not Started: <span id="statNotStarted">0</span></div>
+  <div class="stat-item">Avg Progress: <span id="statAvgProgress">0%</span></div>
+  <div class="stat-item">Date Range: <span id="statDateRange">—</span></div>
+</div>
+
+<!-- Main content -->
+<div class="main-container">
+  <!-- Task list panel -->
+  <div class="task-panel" id="taskPanel">
+    <div class="task-panel-header" id="taskPanelHeader">
+      <div style="display:flex;align-items:center;gap:6px">
+        <button id="toggleAllGroups" title="Collapse/Expand All" style="background:transparent;border:none;color:var(--text-secondary);cursor:pointer;font-size:13px;padding:2px 4px;border-radius:3px;line-height:1">&#9660;</button>
+        Task
+      </div>
+      <div style="text-align:center" id="headerProgress">Progress</div>
+      <div style="text-align:center">Assignee</div>
+    </div>
+    <div class="task-list" id="taskList"></div>
+  </div>
+
+  <!-- Resize handle -->
+  <div class="resize-handle" id="resizeHandle"></div>
+
+  <!-- Chart area -->
+  <div class="chart-area" id="chartArea">
+    <div class="chart-body-wrapper" id="chartBodyWrapper">
+      <div class="chart-header" id="chartHeader"></div>
+      <div class="chart-body" id="chartBody"></div>
+    </div>
+  </div>
+
+  <!-- Detail panel -->
+  <div class="detail-panel" id="detailPanel">
+    <div class="detail-content" id="detailContent"></div>
+  </div>
+</div>
+
+<!-- Drag/drop overlay -->
+<div class="drop-overlay" id="dropOverlay">Drop CSV file here</div>
+
+<script>
+// ─── State ───
+let tasks = [];
+let filteredTasks = [];
+let groupedTasks = [];
+let collapsedGroups = new Set();
+let currentView = 'week';
+let selectedTaskIndex = -1;
+let searchTerm = '';
+let activeGroups = new Set();
+let activeAssignees = new Set();
+let activeDeps = new Set();
+let hasProgress = false;
+
+// ─── CSV Parsing ───
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
+  const result = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]);
+    if (values.length < 4) continue;
+    const row = {};
+    headers.forEach((h, idx) => { row[h] = (values[idx] || '').trim(); });
+    result.push({
+      name: row.task || row.name || row.title || '',
+      group: row.group || row.category || row.phase || 'Ungrouped',
+      assignee: row.assignee || row.owner || row.resource || '',
+      start: new Date(row.start || row.start_date || row.startdate || ''),
+      end: new Date(row.end || row.end_date || row.enddate || row.finish || ''),
+      progress: Math.min(100, Math.max(0, parseInt(row.progress || row.complete || '0', 10) || 0)),
+      dependencies: (row.dependencies || row.deps || row.predecessors || '').split(';').map(s => s.trim()).filter(Boolean),
+      color: null,
+    });
+  }
+  return result.filter(t => t.name && !isNaN(t.start) && !isNaN(t.end));
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
+      else if (ch === '"') { inQuotes = false; }
+      else { current += ch; }
+    } else {
+      if (ch === '"') { inQuotes = true; }
+      else if (ch === ',') { result.push(current); current = ''; }
+      else { current += ch; }
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+// ─── Data Handling ───
+function loadTasks(data) {
+  tasks = data;
+  const groupColors = {};
+  const palette = (function(){const a=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#2f7bbf';return Array(8).fill(a)})();
+  let ci = 0;
+  tasks.forEach(t => {
+    if (!t.color) {
+      if (!groupColors[t.group]) groupColors[t.group] = palette[ci++ % palette.length];
+      t.color = groupColors[t.group];
+    }
+  });
+  hasProgress = tasks.some(t => t.progress > 0);
+  activeGroups = new Set(tasks.map(t => t.group));
+  activeAssignees = new Set(tasks.map(t => t.assignee).filter(Boolean));
+  const allDeps = new Set();
+  tasks.forEach(t => t.dependencies.forEach(d => allDeps.add(d)));
+  activeDeps = new Set(allDeps);
+  buildFilterDropdown();
+  applyFilters();
+}
+
+function applyFilters() {
+  filteredTasks = tasks.filter(t => {
+    if (!activeGroups.has(t.group)) return false;
+    if (t.assignee && !activeAssignees.has(t.assignee)) return false;
+    if (t.dependencies.length > 0 && !t.dependencies.some(d => activeDeps.has(d))) return false;
+    if (searchTerm && !t.name.toLowerCase().includes(searchTerm) &&
+        !t.group.toLowerCase().includes(searchTerm) &&
+        !t.assignee.toLowerCase().includes(searchTerm)) return false;
+    return true;
+  });
+  groupTasks();
+  render();
+}
+
+function groupTasks() {
+  const groups = {};
+  filteredTasks.forEach(t => {
+    if (!groups[t.group]) groups[t.group] = [];
+    groups[t.group].push(t);
+  });
+  groupedTasks = [];
+  Object.keys(groups).sort().forEach(g => {
+    groupedTasks.push({ type: 'group', name: g, count: groups[g].length });
+    if (!collapsedGroups.has(g)) {
+      groups[g].forEach(t => groupedTasks.push({ type: 'task', task: t }));
+    }
+  });
+}
+
+// ─── Date Utilities ───
+function daysBetween(a, b) { return Math.round((b - a) / 86400000); }
+
+function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+
+function startOfWeek(d) { const r = new Date(d); r.setDate(r.getDate() - r.getDay()); return r; }
+
+function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+
+function endOfMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
+
+function startOfQuarter(d) { return new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1); }
+
+function endOfQuarter(d) { return new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3 + 3, 0); }
+
+function formatDate(d) {
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatShortDate(d) {
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+// ─── View Config ───
+function getViewConfig() {
+  if (filteredTasks.length === 0) {
+    const today = new Date();
+    return { startDate: addDays(today, -7), endDate: addDays(today, 30), cellWidth: 40, unit: 'day' };
+  }
+  const minDate = new Date(Math.min(...filteredTasks.map(t => t.start)));
+  const maxDate = new Date(Math.max(...filteredTasks.map(t => t.end)));
+
+  let startDate, endDate, cellWidth, unit;
+  const PADDING_DAYS = 3;
+
+  switch (currentView) {
+    case 'day':
+      startDate = addDays(minDate, -PADDING_DAYS);
+      endDate = addDays(maxDate, PADDING_DAYS);
+      cellWidth = 50;
+      unit = 'day';
+      break;
+    case 'week':
+      startDate = startOfWeek(minDate);
+      endDate = addDays(maxDate, (7 - maxDate.getDay()) % 7);
+      cellWidth = 24;
+      unit = 'day';
+      break;
+    case 'month':
+      startDate = startOfWeek(startOfMonth(minDate));
+      endDate = addDays(endOfMonth(maxDate), (7 - endOfMonth(maxDate).getDay()) % 7);
+      cellWidth = 35;
+      unit = 'week';
+      break;
+    case 'quarter':
+      startDate = startOfMonth(startOfQuarter(minDate));
+      endDate = addDays(endOfQuarter(maxDate), 1);
+      cellWidth = 80;
+      unit = 'month';
+      break;
+    case 'year':
+      startDate = startOfQuarter(new Date(minDate.getFullYear(), 0, 1));
+      endDate = addDays(endOfQuarter(new Date(maxDate.getFullYear(), 11, 31)), 1);
+      cellWidth = 80;
+      unit = 'quarter';
+      break;
+  }
+  return { startDate, endDate, cellWidth, unit };
+}
+
+function monthsBetween(a, b) {
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+}
+
+function monthOffset(startDate, d) {
+  const wholeMonths = monthsBetween(startDate, startOfMonth(d));
+  const mStart = startOfMonth(d);
+  const mEnd = endOfMonth(d);
+  const daysInMonth = daysBetween(mStart, mEnd) + 1;
+  const dayInMonth = daysBetween(mStart, d);
+  return wholeMonths + dayInMonth / daysInMonth;
+}
+
+function quartersBetween(a, b) {
+  return (b.getFullYear() - a.getFullYear()) * 4 + (Math.floor(b.getMonth() / 3) - Math.floor(a.getMonth() / 3));
+}
+
+function quarterOffset(startDate, d) {
+  const wholeQuarters = quartersBetween(startDate, startOfQuarter(d));
+  const qStart = startOfQuarter(d);
+  const qEnd = endOfQuarter(d);
+  const daysInQuarter = daysBetween(qStart, qEnd) + 1;
+  const dayInQuarter = daysBetween(qStart, d);
+  return wholeQuarters + dayInQuarter / daysInQuarter;
+}
+
+// ─── Rendering ───
+function render() {
+  updateStats();
+  renderTaskList();
+  renderChart();
+}
+
+function updateStats() {
+  const total = filteredTasks.length;
+  const completed = filteredTasks.filter(t => t.progress >= 100).length;
+  const inProgress = filteredTasks.filter(t => t.progress > 0 && t.progress < 100).length;
+  const notStarted = filteredTasks.filter(t => t.progress === 0).length;
+  const avgProgress = total ? Math.round(filteredTasks.reduce((s, t) => s + t.progress, 0) / total) : 0;
+
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statCompleted').textContent = completed;
+  document.getElementById('statInProgress').textContent = inProgress;
+  document.getElementById('statNotStarted').textContent = notStarted;
+  document.getElementById('statAvgProgress').textContent = avgProgress + '%';
+
+  if (filteredTasks.length > 0) {
+    const minD = new Date(Math.min(...filteredTasks.map(t => t.start)));
+    const maxD = new Date(Math.max(...filteredTasks.map(t => t.end)));
+    document.getElementById('statDateRange').textContent = formatDate(minD) + ' — ' + formatDate(maxD);
+  } else {
+    document.getElementById('statDateRange').textContent = '—';
+  }
+}
+
+function renderTaskList() {
+  const list = document.getElementById('taskList');
+  list.innerHTML = '';
+  const gridCols = hasProgress ? '1fr 80px 80px' : '1fr 80px';
+  document.getElementById('taskPanelHeader').style.gridTemplateColumns = gridCols;
+  document.getElementById('headerProgress').style.display = hasProgress ? '' : 'none';
+  groupedTasks.forEach((item, idx) => {
+    if (item.type === 'group') {
+      const div = document.createElement('div');
+      div.className = 'group-header';
+      const collapsed = collapsedGroups.has(item.name);
+      div.innerHTML = `<span class="arrow ${collapsed ? 'collapsed' : ''}">&#9660;</span>${sanitize(item.name)} (${item.count})`;
+      div.addEventListener('click', () => {
+        if (collapsedGroups.has(item.name)) collapsedGroups.delete(item.name);
+        else collapsedGroups.add(item.name);
+        groupTasks();
+        render();
+      });
+      list.appendChild(div);
+    } else {
+      const t = item.task;
+      const div = document.createElement('div');
+      div.className = 'task-row' + (tasks.indexOf(t) === selectedTaskIndex ? ' selected' : '');
+      div.style.gridTemplateColumns = gridCols;
+      div.innerHTML = `
+        <div class="task-name">
+          <span class="color-dot" style="background:${sanitize(t.color)}"></span>
+          <span title="${sanitize(t.name)}">${sanitize(t.name)}</span>
+        </div>
+        ${hasProgress ? `<div class="progress-text">${t.progress}%</div>` : ''}
+        <div class="assignee-text" title="${sanitize(t.assignee)}">${sanitize(t.assignee)}</div>
+      `;
+      div.addEventListener('click', () => {
+        selectedTaskIndex = tasks.indexOf(t);
+        showDetail(t);
+        render();
+      });
+      list.appendChild(div);
+    }
+  });
+}
+
+function renderChart() {
+  const config = getViewConfig();
+  const { startDate, endDate, cellWidth, unit } = config;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const header = document.getElementById('chartHeader');
+  header.innerHTML = '';
+
+  if (currentView === 'day') {
+    renderDayHeader(header, startDate, endDate, cellWidth, today);
+  } else if (currentView === 'week') {
+    renderWeekHeader(header, startDate, endDate, cellWidth, today);
+  } else if (currentView === 'month') {
+    renderMonthHeader(header, startDate, endDate, cellWidth, today);
+  } else if (currentView === 'quarter') {
+    renderQuarterHeader(header, startDate, endDate, cellWidth, today);
+  } else {
+    renderYearHeader(header, startDate, endDate, cellWidth, today);
+  }
+
+  const body = document.getElementById('chartBody');
+  body.innerHTML = '';
+  const totalDays = daysBetween(startDate, endDate);
+  let totalWidth;
+
+  if (unit === 'day') {
+    totalWidth = totalDays * cellWidth;
+  } else if (unit === 'month') {
+    const totalMonths = monthsBetween(startDate, endDate);
+    totalWidth = totalMonths * cellWidth;
+  } else if (unit === 'quarter') {
+    const totalQuarters = quartersBetween(startDate, endDate);
+    totalWidth = totalQuarters * cellWidth;
+  } else {
+    totalWidth = Math.ceil(totalDays / 7) * cellWidth;
+  }
+  body.style.width = totalWidth + 'px';
+
+  let gridInterval;
+  if (unit === 'month') {
+    gridInterval = cellWidth;
+  } else if (unit === 'day') {
+    gridInterval = cellWidth;
+  } else {
+    gridInterval = cellWidth;
+  }
+  const gridBG = `repeating-linear-gradient(to right, var(--border-color) 0px, var(--border-color) 1px, transparent 1px, transparent ${gridInterval}px)`;
+  body.style.backgroundImage = gridBG;
+  body.style.backgroundPosition = '0 0';
+  body.style.backgroundSize = `${gridInterval}px 100%`;
+
+  header.style.width = totalWidth + 'px';
+  header.style.backgroundImage = 'none';
+
+  if (unit === 'day' && (currentView === 'day' || currentView === 'week')) {
+    for (let i = 0; i < totalDays; i++) {
+      const d = addDays(startDate, i);
+      if (d.getDay() === 0 || d.getDay() === 6) {
+        const col = document.createElement('div');
+        col.style.cssText = `position:absolute;top:0;bottom:0;left:${i * cellWidth}px;width:${cellWidth}px;background:rgba(255,255,255,0.03);pointer-events:none;`;
+        body.appendChild(col);
+      }
+    }
+  }
+
+  const todayOffset = daysBetween(startDate, today);
+  if (todayOffset >= 0 && todayOffset <= totalDays) {
+    const todayLine = document.createElement('div');
+    todayLine.className = 'chart-today-line';
+    if (unit === 'day') {
+      todayLine.style.left = (todayOffset * cellWidth) + 'px';
+    } else if (unit === 'month') {
+      todayLine.style.left = (monthOffset(startDate, today) * cellWidth) + 'px';
+    } else if (unit === 'quarter') {
+      todayLine.style.left = (quarterOffset(startDate, today) * cellWidth) + 'px';
+    } else {
+      todayLine.style.left = (todayOffset / 7 * cellWidth) + 'px';
+    }
+    body.appendChild(todayLine);
+  }
+
+  groupedTasks.forEach(item => {
+    if (item.type === 'group') {
+      const div = document.createElement('div');
+      div.className = 'chart-group-header';
+      body.appendChild(div);
+    } else {
+      const t = item.task;
+      const row = document.createElement('div');
+      row.className = 'chart-row';
+
+      const taskStart = daysBetween(startDate, t.start);
+      const taskDuration = Math.max(1, daysBetween(t.start, t.end) + 1);
+
+      let left, width;
+      if (unit === 'day') {
+        left = taskStart * cellWidth;
+        width = taskDuration * cellWidth;
+      } else if (unit === 'month') {
+        left = monthOffset(startDate, t.start) * cellWidth;
+        width = (monthOffset(startDate, t.end) - monthOffset(startDate, t.start) + (1 / (daysBetween(startOfMonth(t.end), endOfMonth(t.end)) + 1))) * cellWidth;
+      } else if (unit === 'quarter') {
+        left = quarterOffset(startDate, t.start) * cellWidth;
+        width = (quarterOffset(startDate, t.end) - quarterOffset(startDate, t.start) + (1 / (daysBetween(startOfQuarter(t.end), endOfQuarter(t.end)) + 1))) * cellWidth;
+      } else {
+        left = (taskStart / 7) * cellWidth;
+        width = (taskDuration / 7) * cellWidth;
+      }
+
+      const bar = document.createElement('div');
+      bar.className = 'bar-container';
+      bar.style.left = left + 'px';
+      bar.style.width = Math.max(4, width) + 'px';
+
+      const progressPart = document.createElement('div');
+      progressPart.className = 'bar-progress';
+      progressPart.style.width = t.progress + '%';
+      progressPart.style.background = t.color;
+
+      const remainPart = document.createElement('div');
+      remainPart.className = 'bar-remaining';
+      remainPart.style.background = t.color;
+
+      bar.appendChild(progressPart);
+      bar.appendChild(remainPart);
+
+      if (width > 60) {
+        const label = document.createElement('div');
+        label.className = 'bar-label';
+        label.textContent = t.name;
+        bar.appendChild(label);
+      }
+
+      bar.addEventListener('click', () => {
+        selectedTaskIndex = tasks.indexOf(t);
+        showDetail(t);
+        render();
+      });
+
+      row.appendChild(bar);
+      body.appendChild(row);
+    }
+  });
+
+  const wrapper = document.getElementById('chartBodyWrapper');
+  wrapper.onscroll = function () {
+    document.getElementById('taskList').scrollTop = wrapper.scrollTop;
+  };
+}
+
+// ─── Header Renderers ───
+function renderDayHeader(header, startDate, endDate, cellWidth, today) {
+  const days = daysBetween(startDate, endDate);
+  const row1 = document.createElement('div');
+  row1.className = 'chart-header-row';
+  let curMonth = -1;
+  let monthSpan = 0;
+  let monthCells = [];
+  for (let i = 0; i < days; i++) {
+    const d = addDays(startDate, i);
+    if (d.getMonth() !== curMonth) {
+      if (monthSpan > 0) monthCells.push({ label: MONTH_NAMES[curMonth] + ' ' + addDays(startDate, i - 1).getFullYear(), span: monthSpan });
+      curMonth = d.getMonth();
+      monthSpan = 1;
+    } else { monthSpan++; }
+  }
+  if (monthSpan > 0) monthCells.push({ label: MONTH_NAMES[curMonth] + ' ' + endDate.getFullYear(), span: monthSpan });
+  monthCells.forEach(mc => {
+    const cell = document.createElement('div');
+    cell.className = 'header-cell';
+    cell.style.width = (mc.span * cellWidth) + 'px';
+    cell.style.minWidth = (mc.span * cellWidth) + 'px';
+    cell.textContent = mc.label;
+    row1.appendChild(cell);
+  });
+  header.appendChild(row1);
+
+  const row2 = document.createElement('div');
+  row2.className = 'chart-header-row';
+  for (let i = 0; i < days; i++) {
+    const d = addDays(startDate, i);
+    const cell = document.createElement('div');
+    cell.className = 'header-cell';
+    if (d.getTime() === today.getTime()) cell.classList.add('today');
+    cell.style.width = cellWidth + 'px';
+    cell.style.minWidth = cellWidth + 'px';
+    cell.textContent = d.getDate();
+    cell.title = DAY_NAMES[d.getDay()] + ', ' + formatDate(d);
+    if (d.getDay() === 0 || d.getDay() === 6) cell.style.background = 'rgba(255,255,255,0.03)';
+    row2.appendChild(cell);
+  }
+  header.appendChild(row2);
+}
+
+function renderWeekHeader(header, startDate, endDate, cellWidth, today) {
+  const days = daysBetween(startDate, endDate);
+  const row1 = document.createElement('div');
+  row1.className = 'chart-header-row';
+  let curMonth = -1;
+  let monthSpan = 0;
+  let monthCells = [];
+  for (let i = 0; i < days; i++) {
+    const d = addDays(startDate, i);
+    if (d.getMonth() !== curMonth) {
+      if (monthSpan > 0) monthCells.push({ label: MONTH_NAMES[curMonth] + ' ' + addDays(startDate, i - 1).getFullYear(), span: monthSpan });
+      curMonth = d.getMonth();
+      monthSpan = 1;
+    } else { monthSpan++; }
+  }
+  if (monthSpan > 0) monthCells.push({ label: MONTH_NAMES[curMonth] + ' ' + endDate.getFullYear(), span: monthSpan });
+  monthCells.forEach(mc => {
+    const cell = document.createElement('div');
+    cell.className = 'header-cell';
+    cell.style.width = (mc.span * cellWidth) + 'px';
+    cell.style.minWidth = (mc.span * cellWidth) + 'px';
+    cell.textContent = mc.label;
+    row1.appendChild(cell);
+  });
+  header.appendChild(row1);
+
+  const row2 = document.createElement('div');
+  row2.className = 'chart-header-row';
+  for (let i = 0; i < days; i++) {
+    const d = addDays(startDate, i);
+    const cell = document.createElement('div');
+    cell.className = 'header-cell';
+    if (d.getTime() === today.getTime()) cell.classList.add('today');
+    cell.style.width = cellWidth + 'px';
+    cell.style.minWidth = cellWidth + 'px';
+    cell.textContent = (d.getDay() === 1 || i === 0) ? d.getDate() : '';
+    cell.title = DAY_NAMES[d.getDay()] + ', ' + formatDate(d);
+    if (d.getDay() === 0 || d.getDay() === 6) cell.style.background = 'rgba(255,255,255,0.02)';
+    row2.appendChild(cell);
+  }
+  header.appendChild(row2);
+}
+
+function renderMonthHeader(header, startDate, endDate, cellWidth) {
+  const days = daysBetween(startDate, endDate);
+  const totalWeeks = Math.ceil(days / 7);
+  const row1 = document.createElement('div');
+  row1.className = 'chart-header-row';
+  let d = new Date(startDate);
+  let cumWeeks = 0;
+  while (d < endDate) {
+    const mEnd = endOfMonth(d);
+    const visEnd = new Date(Math.min(mEnd, endDate));
+    const nextCum = Math.round((daysBetween(startDate, visEnd) + 1) / 7);
+    const span = Math.max(1, nextCum - cumWeeks);
+    const cell = document.createElement('div');
+    cell.className = 'header-cell';
+    cell.style.width = (span * cellWidth) + 'px';
+    cell.style.minWidth = (span * cellWidth) + 'px';
+    cell.textContent = MONTH_NAMES[d.getMonth()] + ' ' + d.getFullYear();
+    row1.appendChild(cell);
+    cumWeeks = nextCum;
+    d = addDays(mEnd, 1);
+  }
+  header.appendChild(row1);
+
+  const row2 = document.createElement('div');
+  row2.className = 'chart-header-row';
+  for (let w = 0; w < totalWeeks; w++) {
+    const weekStart = addDays(startDate, w * 7);
+    const cell = document.createElement('div');
+    cell.className = 'header-cell';
+    cell.style.width = cellWidth + 'px';
+    cell.style.minWidth = cellWidth + 'px';
+    cell.textContent = MONTH_NAMES[weekStart.getMonth()] + ' ' + weekStart.getDate();
+    cell.style.fontSize = '9px';
+    row2.appendChild(cell);
+  }
+  header.appendChild(row2);
+}
+
+function renderQuarterHeader(header, startDate, endDate, cellWidth) {
+  const totalMonths = monthsBetween(startDate, endDate);
+  const row1 = document.createElement('div');
+  row1.className = 'chart-header-row';
+  let d = new Date(startDate);
+  let cumMonths = 0;
+  while (d < endDate) {
+    const qEnd = endOfQuarter(d);
+    const visEnd = new Date(Math.min(qEnd, endDate));
+    const nextCum = monthsBetween(startDate, addDays(visEnd, 1));
+    const span = Math.max(1, nextCum - cumMonths);
+    const q = Math.floor(d.getMonth() / 3) + 1;
+    const cell = document.createElement('div');
+    cell.className = 'header-cell';
+    cell.style.width = (span * cellWidth) + 'px';
+    cell.style.minWidth = (span * cellWidth) + 'px';
+    cell.textContent = 'Q' + q + ' ' + d.getFullYear();
+    row1.appendChild(cell);
+    cumMonths = nextCum;
+    d = addDays(qEnd, 1);
+  }
+  header.appendChild(row1);
+
+  const row2 = document.createElement('div');
+  row2.className = 'chart-header-row';
+  d = new Date(startDate);
+  for (let m = 0; m < totalMonths; m++) {
+    const cell = document.createElement('div');
+    cell.className = 'header-cell';
+    cell.style.width = cellWidth + 'px';
+    cell.style.minWidth = cellWidth + 'px';
+    cell.textContent = MONTH_NAMES[d.getMonth()];
+    row2.appendChild(cell);
+    d = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  }
+  header.appendChild(row2);
+}
+
+function renderYearHeader(header, startDate, endDate, cellWidth) {
+  const totalQuarters = quartersBetween(startDate, endDate);
+  const row1 = document.createElement('div');
+  row1.className = 'chart-header-row';
+  let d = new Date(startDate);
+  let cumQ = 0;
+  while (d < endDate) {
+    const yEnd = new Date(d.getFullYear(), 11, 31);
+    const visEnd = new Date(Math.min(endOfQuarter(yEnd), endDate));
+    const nextCum = quartersBetween(startDate, new Date(d.getFullYear() + 1, 0, 1));
+    const span = Math.max(1, Math.min(nextCum, totalQuarters) - cumQ);
+    const cell = document.createElement('div');
+    cell.className = 'header-cell';
+    cell.style.width = (span * cellWidth) + 'px';
+    cell.style.minWidth = (span * cellWidth) + 'px';
+    cell.textContent = d.getFullYear();
+    row1.appendChild(cell);
+    cumQ += span;
+    d = new Date(d.getFullYear() + 1, 0, 1);
+  }
+  header.appendChild(row1);
+
+  const row2 = document.createElement('div');
+  row2.className = 'chart-header-row';
+  d = new Date(startDate);
+  for (let q = 0; q < totalQuarters; q++) {
+    const qNum = Math.floor(d.getMonth() / 3) + 1;
+    const cell = document.createElement('div');
+    cell.className = 'header-cell';
+    cell.style.width = cellWidth + 'px';
+    cell.style.minWidth = cellWidth + 'px';
+    cell.textContent = 'Q' + qNum;
+    row2.appendChild(cell);
+    d = addDays(endOfQuarter(d), 1);
+  }
+  header.appendChild(row2);
+}
+
+// ─── Detail Panel ───
+function showDetail(t) {
+  const panel = document.getElementById('detailPanel');
+  const content = document.getElementById('detailContent');
+  panel.classList.add('open');
+
+  const duration = daysBetween(t.start, t.end) + 1;
+  const deps = t.dependencies.length > 0
+    ? t.dependencies.map(d => `<span class="dep-tag">${sanitize(d)}</span>`).join('')
+    : '<span style="color:var(--text-secondary);font-size:13px">None</span>';
+
+  content.innerHTML = `
+    <h2>
+      <span>${sanitize(t.name)}</span>
+      <button class="close-btn" id="closeDetail">&times;</button>
+    </h2>
+    <div class="detail-field">
+      <label>Group</label>
+      <div class="value"><span class="color-dot" style="background:${sanitize(t.color)};display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:6px"></span>${sanitize(t.group)}</div>
+    </div>
+    <div class="detail-field">
+      <label>Assignee</label>
+      <div class="value">${sanitize(t.assignee) || '—'}</div>
+    </div>
+    <div class="detail-field">
+      <label>Start Date</label>
+      <div class="value">${formatDate(t.start)}</div>
+    </div>
+    <div class="detail-field">
+      <label>End Date</label>
+      <div class="value">${formatDate(t.end)}</div>
+    </div>
+    <div class="detail-field">
+      <label>Duration</label>
+      <div class="value">${duration} day${duration !== 1 ? 's' : ''}</div>
+    </div>
+    <div class="detail-field">
+      <label>Progress</label>
+      <div class="value">${t.progress}%</div>
+      <div class="detail-progress-bar">
+        <div class="fill" style="width:${t.progress}%;background:${sanitize(t.color)}"></div>
+      </div>
+    </div>
+    <div class="detail-field">
+      <label>Dependencies</label>
+      <div class="detail-deps">${deps}</div>
+    </div>
+  `;
+
+  document.getElementById('closeDetail').addEventListener('click', () => {
+    panel.classList.remove('open');
+    selectedTaskIndex = -1;
+    render();
+  });
+}
+
+// ─── Filter Panel ───
+function buildFilterDropdown() {
+  const dropdown = document.getElementById('filterDropdown');
+  const groups = [...new Set(tasks.map(t => t.group))].sort();
+  const assignees = [...new Set(tasks.map(t => t.assignee).filter(Boolean))].sort();
+
+  const groupCounts = {};
+  const assigneeCounts = {};
+  tasks.forEach(t => {
+    groupCounts[t.group] = (groupCounts[t.group] || 0) + 1;
+    if (t.assignee) assigneeCounts[t.assignee] = (assigneeCounts[t.assignee] || 0) + 1;
+  });
+
+  dropdown.innerHTML = '';
+
+  const hdr = document.createElement('div');
+  hdr.className = 'filter-panel-header';
+  hdr.innerHTML = '<span>Filters</span>';
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'filter-clear-btn';
+  clearBtn.textContent = 'Reset All';
+  clearBtn.addEventListener('click', () => {
+    groups.forEach(g => activeGroups.add(g));
+    assignees.forEach(a => activeAssignees.add(a));
+    const allDepsList = [...new Set(tasks.flatMap(t => t.dependencies))];
+    allDepsList.forEach(d => activeDeps.add(d));
+    buildFilterDropdown();
+    applyFilters();
+  });
+  hdr.appendChild(clearBtn);
+  dropdown.appendChild(hdr);
+
+  const body = document.createElement('div');
+  body.className = 'filter-panel-body';
+
+  function buildSection(label, items, counts, activeSet) {
+    const sHdr = document.createElement('div');
+    sHdr.className = 'filter-section-hdr';
+    const sLabel = document.createElement('span');
+    sLabel.textContent = label;
+    sHdr.appendChild(sLabel);
+
+    const actions = document.createElement('span');
+    actions.className = 'section-actions';
+    const allBtn = document.createElement('button');
+    allBtn.className = 'section-action';
+    allBtn.textContent = 'All';
+    allBtn.addEventListener('click', () => {
+      items.forEach(v => activeSet.add(v));
+      buildFilterDropdown(); applyFilters();
+    });
+    const noneBtn = document.createElement('button');
+    noneBtn.className = 'section-action';
+    noneBtn.textContent = 'None';
+    noneBtn.addEventListener('click', () => {
+      activeSet.clear();
+      buildFilterDropdown(); applyFilters();
+    });
+    actions.appendChild(allBtn);
+    actions.appendChild(noneBtn);
+    sHdr.appendChild(actions);
+    body.appendChild(sHdr);
+
+    items.forEach(val => {
+      const row = document.createElement('div');
+      row.className = 'filter-item' + (activeSet.has(val) ? ' checked' : '');
+      const check = document.createElement('span');
+      check.className = 'filter-check';
+      const lbl = document.createElement('span');
+      lbl.className = 'filter-item-label';
+      lbl.textContent = val;
+      const cnt = document.createElement('span');
+      cnt.className = 'filter-item-count';
+      cnt.textContent = counts[val] || 0;
+      row.appendChild(check);
+      row.appendChild(lbl);
+      row.appendChild(cnt);
+      row.addEventListener('click', () => {
+        if (activeSet.has(val)) activeSet.delete(val); else activeSet.add(val);
+        buildFilterDropdown(); applyFilters();
+      });
+      body.appendChild(row);
+    });
+  }
+
+  buildSection('Groups', groups, groupCounts, activeGroups);
+
+  if (assignees.length) {
+    const divider = document.createElement('div');
+    divider.className = 'filter-divider';
+    body.appendChild(divider);
+    buildSection('Assignees', assignees, assigneeCounts, activeAssignees);
+  }
+
+  const allDepsList = [...new Set(tasks.flatMap(t => t.dependencies))].sort();
+  if (allDepsList.length) {
+    const depCounts = {};
+    tasks.forEach(t => t.dependencies.forEach(d => { depCounts[d] = (depCounts[d] || 0) + 1; }));
+    const divider2 = document.createElement('div');
+    divider2.className = 'filter-divider';
+    body.appendChild(divider2);
+    buildSection('Dependencies', allDepsList, depCounts, activeDeps);
+  }
+
+  dropdown.appendChild(body);
+  updateFilterBtnState(groups, assignees, allDepsList);
+}
+
+function updateFilterBtnState(groups, assignees, deps) {
+  const btn = document.getElementById('filterBtn');
+  const badge = document.getElementById('filterBadge');
+  const allGroups = groups || [...new Set(tasks.map(t => t.group))].sort();
+  const allAssignees = assignees || [...new Set(tasks.map(t => t.assignee).filter(Boolean))].sort();
+  const allDeps = deps || [...new Set(tasks.flatMap(t => t.dependencies))].sort();
+  const hiddenGroups = allGroups.filter(g => !activeGroups.has(g)).length;
+  const hiddenAssignees = allAssignees.filter(a => !activeAssignees.has(a)).length;
+  const hiddenDeps = allDeps.filter(d => !activeDeps.has(d)).length;
+  const totalHidden = hiddenGroups + hiddenAssignees + hiddenDeps;
+  const isFiltered = totalHidden > 0;
+  btn.classList.toggle('has-filter', isFiltered);
+  badge.textContent = totalHidden;
+}
+
+// ─── Scroll Sync ───
+function syncScroll() {
+  const taskList = document.getElementById('taskList');
+  const chartWrapper = document.getElementById('chartBodyWrapper');
+  let syncing = false;
+
+  taskList.addEventListener('scroll', () => {
+    if (syncing) return;
+    syncing = true;
+    chartWrapper.scrollTop = taskList.scrollTop;
+    syncing = false;
+  });
+
+  chartWrapper.addEventListener('scroll', () => {
+    if (syncing) return;
+    syncing = true;
+    taskList.scrollTop = chartWrapper.scrollTop;
+    syncing = false;
+  });
+}
+
+// ─── Resize Handle ───
+function initResize() {
+  const handle = document.getElementById('resizeHandle');
+  const panel = document.getElementById('taskPanel');
+  let startX, startW;
+
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    startX = e.clientX;
+    startW = panel.offsetWidth;
+    handle.classList.add('dragging');
+    document.addEventListener('mousemove', onDrag);
+    document.addEventListener('mouseup', () => {
+      handle.classList.remove('dragging');
+      document.removeEventListener('mousemove', onDrag);
+    }, { once: true });
+  });
+
+  function onDrag(e) {
+    const newW = Math.max(200, Math.min(600, startW + (e.clientX - startX)));
+    panel.style.width = newW + 'px';
+  }
+}
+
+// ─── Today Button ───
+function scrollToToday() {
+  const config = getViewConfig();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const offset = daysBetween(config.startDate, today);
+  const wrapper = document.getElementById('chartBodyWrapper');
+  if (config.unit === 'day') {
+    wrapper.scrollLeft = Math.max(0, offset * config.cellWidth - wrapper.clientWidth / 2);
+  } else if (config.unit === 'month') {
+    wrapper.scrollLeft = Math.max(0, monthOffset(config.startDate, today) * config.cellWidth - wrapper.clientWidth / 2);
+  } else if (config.unit === 'quarter') {
+    wrapper.scrollLeft = Math.max(0, quarterOffset(config.startDate, today) * config.cellWidth - wrapper.clientWidth / 2);
+  } else {
+    wrapper.scrollLeft = Math.max(0, (offset / 7) * config.cellWidth - wrapper.clientWidth / 2);
+  }
+}
+
+// ─── Sanitize ───
+function sanitize(str) {
+  if (!str) return '';
+  const el = document.createElement('span');
+  el.textContent = str;
+  return el.innerHTML;
+}
+
+// ─── CSV Drag & Drop ───
+function initDragDrop() {
+  let dragCounter = 0;
+  const overlay = document.getElementById('dropOverlay');
+
+  document.addEventListener('dragenter', e => {
+    e.preventDefault();
+    dragCounter++;
+    overlay.classList.add('visible');
+  });
+
+  document.addEventListener('dragleave', e => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter <= 0) { overlay.classList.remove('visible'); dragCounter = 0; }
+  });
+
+  document.addEventListener('dragover', e => { e.preventDefault(); });
+
+  document.addEventListener('drop', e => {
+    e.preventDefault();
+    dragCounter = 0;
+    overlay.classList.remove('visible');
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.endsWith('.csv')) {
+      readCSVFile(file);
+    }
+  });
+}
+
+function readCSVFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    loadFromCSVText(e.target.result);
+  };
+  reader.readAsText(file);
+}
+
+function loadFromCSVText(csvText) {
+  const data = parseCSV(csvText);
+  if (data.length > 0) {
+    try { localStorage.setItem('gantt_csv', csvText); } catch (e) { /* quota exceeded */ }
+    loadTasks(data);
+  } else {
+    alert('No valid task data found in CSV. Expected columns: Task, Start, End (and optionally Group, Assignee, Progress, Dependencies, Color).');
+  }
+}
+
+// ─── Events ───
+document.getElementById('viewToggle').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-view]');
+  if (!btn) return;
+  document.querySelectorAll('#viewToggle button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentView = btn.dataset.view;
+  render();
+});
+
+document.getElementById('searchInput').addEventListener('input', e => {
+  searchTerm = e.target.value.toLowerCase();
+  applyFilters();
+});
+
+document.getElementById('btnToday').addEventListener('click', scrollToToday);
+
+document.getElementById('toggleAllGroups').addEventListener('click', () => {
+  const allGroups = [...new Set(tasks.map(t => t.group))];
+  const allCollapsed = allGroups.every(g => collapsedGroups.has(g));
+  if (allCollapsed) {
+    collapsedGroups.clear();
+  } else {
+    allGroups.forEach(g => collapsedGroups.add(g));
+  }
+  const btn = document.getElementById('toggleAllGroups');
+  btn.innerHTML = allCollapsed ? '&#9660;' : '&#9654;';
+  groupTasks();
+  render();
+});
+
+document.getElementById('filterBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('filterDropdown').classList.toggle('open');
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.filter-container')) {
+    document.getElementById('filterDropdown').classList.remove('open');
+  }
+});
+
+// ─── Theme ───
+(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('gantt_theme') || 'dark'); })();
+
+// ─── Init ───
+syncScroll();
+initResize();
+initDragDrop();
+
+if (window.__GANTT_CSV__) {
+  const data = parseCSV(window.__GANTT_CSV__);
+  if (data.length > 0) {
+    const minMs = Math.min(...data.map(t => t.start.getTime()));
+    const maxMs = Math.max(...data.map(t => t.end.getTime()));
+    const pointAt32 = minMs + (maxMs - minMs) * 0.32;
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const shiftMs = now.getTime() - pointAt32;
+    data.forEach(t => {
+      t.start = new Date(t.start.getTime() + shiftMs);
+      t.end = new Date(t.end.getTime() + shiftMs);
+    });
+    loadTasks(data);
+  }
+}
+
+render();
+</script>
+</body>
+</html>

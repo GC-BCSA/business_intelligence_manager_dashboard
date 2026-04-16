@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Progress Charts</title>
+<script src="../data/data.js"></script>
+<style>
+  :root, [data-theme="dark"] {
+    --bg-primary: #0f1923;
+    --bg-secondary: #152232;
+    --bg-tertiary: #1c2e42;
+    --text-primary: #d8dee9;
+    --text-secondary: #7b8da2;
+    --border-color: #243447;
+    --accent: #2f7bbf;
+    --accent-hover: #3d8fd4;
+    --accent-subtle: rgba(47, 123, 191, 0.10);
+    --today-line: #e85d5d;
+    --row-hover: rgba(47, 123, 191, 0.08);
+    --progress-bg: rgba(255,255,255,0.10);
+  }
+  [data-theme="light"] {
+    --bg-primary: #f4f6f9;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #e9edf2;
+    --text-primary: #1a2332;
+    --text-secondary: #5a6a7e;
+    --border-color: #d0d7e0;
+    --accent: #2468a8;
+    --accent-hover: #1b5690;
+    --accent-subtle: rgba(36, 104, 168, 0.08);
+    --today-line: #d94444;
+    --row-hover: rgba(36, 104, 168, 0.06);
+    --progress-bg: rgba(0,0,0,0.08);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-primary); color: var(--text-primary);
+    height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  .toolbar {
+    display: flex; align-items: center; gap: 12px; padding: 10px 20px;
+    background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0; flex-wrap: wrap;
+  }
+  .toolbar h1 { font-size: 18px; font-weight: 600; margin-right: auto; white-space: nowrap; }
+  .toolbar h1 a { color: var(--text-secondary); text-decoration: none; margin-right: 8px; font-size: 16px; }
+  .toolbar h1 a:hover { color: var(--text-primary); }
+
+  .view-toggle {
+    display: flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden;
+  }
+  .view-toggle button {
+    background: transparent; color: var(--text-secondary); border: none;
+    padding: 6px 14px; font-size: 13px; cursor: pointer; transition: all 0.2s;
+    border-right: 1px solid var(--border-color);
+  }
+  .view-toggle button:last-child { border-right: none; }
+  .view-toggle button:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .view-toggle button.active { background: var(--accent); color: #fff; }
+
+  .theme-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; background: transparent;
+    border: 1px solid var(--border-color); border-radius: 6px;
+    color: var(--text-secondary); cursor: pointer; transition: all 0.2s;
+  }
+  .theme-toggle:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .theme-toggle svg { width: 16px; height: 16px; }
+
+  .main-area {
+    flex: 1; overflow: auto; padding: 24px;
+  }
+  .main-area::-webkit-scrollbar { width: 8px; height: 8px; }
+  .main-area::-webkit-scrollbar-track { background: var(--bg-primary); }
+  .main-area::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+
+  .charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
+    gap: 20px; max-width: 1400px; margin: 0 auto;
+  }
+
+  .chart-card {
+    background: var(--bg-secondary); border: 1px solid var(--border-color);
+    border-radius: 10px; padding: 20px; display: flex; flex-direction: column;
+  }
+  .chart-card.full-width { grid-column: 1 / -1; }
+  .chart-title {
+    font-size: 14px; font-weight: 600; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .chart-title .subtitle { font-weight: 400; color: var(--text-secondary); font-size: 12px; }
+
+  /* Horizontal bar chart */
+  .bar-chart { display: flex; flex-direction: column; gap: 10px; }
+  .bar-row {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .bar-label {
+    width: 110px; flex-shrink: 0; font-size: 12px; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    text-align: right;
+  }
+  .bar-track {
+    flex: 1; height: 22px; background: var(--progress-bg);
+    border-radius: 4px; overflow: hidden; position: relative;
+  }
+  .bar-fill {
+    height: 100%; border-radius: 4px; transition: width 0.6s ease;
+    display: flex; align-items: center; padding-left: 8px;
+  }
+  .bar-fill span {
+    font-size: 10px; font-weight: 600; color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  }
+  .bar-value {
+    width: 40px; flex-shrink: 0; font-size: 12px; font-weight: 600; text-align: left;
+  }
+
+  /* Donut / SVG chart */
+  .donut-container { display: flex; align-items: center; gap: 20px; justify-content: center; flex-wrap: wrap; }
+  .donut-legend { display: flex; flex-direction: column; gap: 6px; }
+  .donut-legend-item {
+    display: flex; align-items: center; gap: 8px; font-size: 12px;
+  }
+  .donut-legend-swatch {
+    width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0;
+  }
+  .donut-legend-value { font-weight: 600; margin-left: auto; padding-left: 12px; }
+
+  /* Stacked grouped bar chart */
+  .stacked-chart { overflow-x: auto; }
+  .stacked-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .stacked-label { width: 110px; flex-shrink: 0; font-size: 12px; font-weight: 500; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stacked-bars { flex: 1; display: flex; height: 22px; border-radius: 4px; overflow: hidden; background: var(--progress-bg); }
+  .stacked-segment { height: 100%; display: flex; align-items: center; justify-content: center; }
+  .stacked-segment span { font-size: 9px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+  .stacked-total { width: 30px; flex-shrink: 0; font-size: 12px; font-weight: 600; text-align: left; }
+
+  /* Summary row */
+  .summary-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 12px; margin-bottom: 4px;
+  }
+  .summary-item {
+    background: var(--bg-tertiary); border-radius: 8px; padding: 14px; text-align: center;
+  }
+  .summary-value { font-size: 24px; font-weight: 700; }
+  .summary-label { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <h1>Progress Charts</h1>
+  <div class="view-toggle" id="viewToggle">
+    <button data-view="group" class="active">By Group</button>
+    <button data-view="assignee">By Assignee</button>
+  </div>
+</div>
+
+<div class="main-area" id="mainArea"></div>
+
+<script>
+// ─── CSV Parsing ───
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
+  const result = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]);
+    if (values.length < 4) continue;
+    const row = {};
+    headers.forEach((h, idx) => { row[h] = (values[idx] || '').trim(); });
+    result.push({
+      name: row.task || row.name || row.title || '',
+      group: row.group || row.category || row.phase || 'Ungrouped',
+      assignee: row.assignee || row.owner || row.resource || '',
+      start: new Date(row.start || row.start_date || row.startdate || ''),
+      end: new Date(row.end || row.end_date || row.enddate || row.finish || ''),
+      progress: Math.min(100, Math.max(0, parseInt(row.progress || row.complete || '0', 10) || 0)),
+      dependencies: (row.dependencies || row.deps || row.predecessors || '').split(';').map(s => s.trim()).filter(Boolean),
+      color: null,
+    });
+  }
+  return result.filter(t => t.name && !isNaN(t.start) && !isNaN(t.end));
+}
+function parseCSVLine(line) {
+  const result = []; let current = ''; let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) { if (ch === '"' && line[i+1] === '"') { current += '"'; i++; } else if (ch === '"') { inQuotes = false; } else { current += ch; } }
+    else { if (ch === '"') { inQuotes = true; } else if (ch === ',') { result.push(current); current = ''; } else { current += ch; } }
+  }
+  result.push(current); return result;
+}
+
+function sanitize(str) { if (!str) return ''; const el = document.createElement('span'); el.textContent = str; return el.innerHTML; }
+
+const PALETTE = (function(){const a=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#2f7bbf';return Array(11).fill(a)})();
+let tasks = [];
+
+if (window.__GANTT_CSV__) {
+  const data = parseCSV(window.__GANTT_CSV__);
+  if (data.length > 0) {
+    const groupColors = {};
+    let ci = 0;
+    data.forEach(t => { if (!t.color) { if (!groupColors[t.group]) groupColors[t.group] = PALETTE[ci++ % PALETTE.length]; t.color = groupColors[t.group]; } });
+    const minMs = Math.min(...data.map(t => t.start.getTime()));
+    const maxMs = Math.max(...data.map(t => t.end.getTime()));
+    const pointAt32 = minMs + (maxMs - minMs) * 0.32;
+    const now = new Date(); now.setHours(0,0,0,0);
+    const shiftMs = now.getTime() - pointAt32;
+    data.forEach(t => { t.start = new Date(t.start.getTime() + shiftMs); t.end = new Date(t.end.getTime() + shiftMs); });
+    tasks = data;
+  }
+}
+
+const today = new Date(); today.setHours(0,0,0,0);
+let currentView = 'group';
+
+function getGroups() { return [...new Set(tasks.map(t => t.group))]; }
+function getAssignees() { return [...new Set(tasks.map(t => t.assignee).filter(Boolean))].sort(); }
+function groupBy(key) {
+  const map = {};
+  tasks.forEach(t => {
+    const k = t[key] || 'Unassigned';
+    if (!map[k]) map[k] = [];
+    map[k].push(t);
+  });
+  return map;
+}
+
+function avgProgress(arr) {
+  if (!arr.length) return 0;
+  return Math.round(arr.reduce((s, t) => s + t.progress, 0) / arr.length);
+}
+
+function render() {
+  const area = document.getElementById('mainArea');
+  area.innerHTML = '';
+
+  const key = currentView === 'group' ? 'group' : 'assignee';
+  const grouped = groupBy(key);
+  const keys = Object.keys(grouped).sort();
+
+  const colorMap = {};
+  keys.forEach((k, i) => { colorMap[k] = PALETTE[i % PALETTE.length]; });
+
+  const total = tasks.length;
+  const complete = tasks.filter(t => t.progress >= 100).length;
+  const inProgress = tasks.filter(t => t.progress > 0 && t.progress < 100).length;
+  const notStarted = tasks.filter(t => t.progress === 0).length;
+  const overdue = tasks.filter(t => t.end < today && t.progress < 100).length;
+  const avgAll = avgProgress(tasks);
+
+  let html = '<div class="charts-grid">';
+
+  html += '<div class="chart-card full-width"><div class="summary-grid">';
+  html += '<div class="summary-item"><div class="summary-value">' + total + '</div><div class="summary-label">Total Tasks</div></div>';
+  html += '<div class="summary-item"><div class="summary-value" style="color:#4CAF50">' + complete + '</div><div class="summary-label">Completed</div></div>';
+  html += '<div class="summary-item"><div class="summary-value" style="color:#2196F3">' + inProgress + '</div><div class="summary-label">In Progress</div></div>';
+  html += '<div class="summary-item"><div class="summary-value" style="color:var(--text-secondary)">' + notStarted + '</div><div class="summary-label">Not Started</div></div>';
+  html += '<div class="summary-item"><div class="summary-value" style="color:var(--today-line)">' + overdue + '</div><div class="summary-label">Overdue</div></div>';
+  html += '<div class="summary-item"><div class="summary-value">' + avgAll + '%</div><div class="summary-label">Overall Progress</div></div>';
+  html += '</div></div>';
+
+  html += '<div class="chart-card"><div class="chart-title">Average Progress <span class="subtitle">by ' + key + '</span></div><div class="bar-chart">';
+  keys.forEach(k => {
+    const avg = avgProgress(grouped[k]);
+    html += '<div class="bar-row">';
+    html += '<div class="bar-label" title="' + sanitize(k) + '">' + sanitize(k) + '</div>';
+    html += '<div class="bar-track"><div class="bar-fill" style="width:' + avg + '%;background:' + colorMap[k] + '"><span>' + (avg >= 15 ? avg + '%' : '') + '</span></div></div>';
+    html += '<div class="bar-value">' + avg + '%</div>';
+    html += '</div>';
+  });
+  html += '</div></div>';
+
+  const statusData = [
+    { label: 'Completed', value: complete, color: '#4CAF50' },
+    { label: 'In Progress', value: inProgress, color: '#2196F3' },
+    { label: 'Not Started', value: notStarted, color: '#607D8B' },
+    { label: 'Overdue', value: overdue, color: '#F44336' },
+  ].filter(d => d.value > 0);
+
+  html += '<div class="chart-card"><div class="chart-title">Status Distribution</div><div class="donut-container">';
+  html += buildDonutSVG(statusData, 130);
+  html += '<div class="donut-legend">';
+  statusData.forEach(d => {
+    html += '<div class="donut-legend-item"><div class="donut-legend-swatch" style="background:' + d.color + '"></div>' + d.label + '<span class="donut-legend-value">' + d.value + '</span></div>';
+  });
+  html += '</div></div></div>';
+
+  html += '<div class="chart-card"><div class="chart-title">Task Count <span class="subtitle">by ' + key + '</span></div><div class="bar-chart">';
+  const maxCount = Math.max(...keys.map(k => grouped[k].length));
+  keys.forEach(k => {
+    const count = grouped[k].length;
+    const pct = maxCount > 0 ? Math.round(count / maxCount * 100) : 0;
+    html += '<div class="bar-row">';
+    html += '<div class="bar-label" title="' + sanitize(k) + '">' + sanitize(k) + '</div>';
+    html += '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%;background:' + colorMap[k] + '"><span>' + (pct >= 15 ? count : '') + '</span></div></div>';
+    html += '<div class="bar-value">' + count + '</div>';
+    html += '</div>';
+  });
+  html += '</div></div>';
+
+  const overdueByKey = {};
+  tasks.filter(t => t.end < today && t.progress < 100).forEach(t => {
+    const k = t[key] || 'Unassigned';
+    overdueByKey[k] = (overdueByKey[k] || 0) + 1;
+  });
+  const overdueData = Object.keys(overdueByKey).map(k => ({ label: k, value: overdueByKey[k], color: colorMap[k] || '#F44336' }));
+  if (overdueData.length > 0) {
+    html += '<div class="chart-card"><div class="chart-title">Overdue Tasks <span class="subtitle">by ' + key + '</span></div><div class="donut-container">';
+    html += buildDonutSVG(overdueData, 130);
+    html += '<div class="donut-legend">';
+    overdueData.forEach(d => {
+      html += '<div class="donut-legend-item"><div class="donut-legend-swatch" style="background:' + d.color + '"></div>' + sanitize(d.label) + '<span class="donut-legend-value">' + d.value + '</span></div>';
+    });
+    html += '</div></div></div>';
+  }
+
+  html += '<div class="chart-card full-width"><div class="chart-title">Completion Breakdown <span class="subtitle">by ' + key + '</span></div>';
+  const stackLegendColors = [['#4CAF50','Complete'],['#2196F3','In Progress'],['#607D8B','Not Started']];
+  html += '<div style="display:flex;gap:14px;margin-bottom:12px;font-size:11px;color:var(--text-secondary)">';
+  stackLegendColors.forEach(([c, l]) => { html += '<div style="display:flex;align-items:center;gap:4px"><div style="width:10px;height:10px;border-radius:2px;background:'+c+'"></div>'+l+'</div>'; });
+  html += '</div>';
+  keys.forEach(k => {
+    const arr = grouped[k];
+    const comp = arr.filter(t => t.progress >= 100).length;
+    const ip = arr.filter(t => t.progress > 0 && t.progress < 100).length;
+    const ns = arr.filter(t => t.progress === 0).length;
+    const tot = arr.length;
+    html += '<div class="stacked-row">';
+    html += '<div class="stacked-label" title="' + sanitize(k) + '">' + sanitize(k) + '</div>';
+    html += '<div class="stacked-bars">';
+    if (comp > 0) html += '<div class="stacked-segment" style="width:' + (comp/tot*100) + '%;background:#4CAF50"><span>' + (comp/tot >= 0.12 ? comp : '') + '</span></div>';
+    if (ip > 0) html += '<div class="stacked-segment" style="width:' + (ip/tot*100) + '%;background:#2196F3"><span>' + (ip/tot >= 0.12 ? ip : '') + '</span></div>';
+    if (ns > 0) html += '<div class="stacked-segment" style="width:' + (ns/tot*100) + '%;background:#607D8B"><span>' + (ns/tot >= 0.12 ? ns : '') + '</span></div>';
+    html += '</div>';
+    html += '<div class="stacked-total">' + tot + '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  html += '</div>';
+  area.innerHTML = html;
+}
+
+function buildDonutSVG(data, size) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  if (total === 0) return '';
+  const cx = size / 2, cy = size / 2, r = size * 0.38, sw = size * 0.16;
+  let angle = -90;
+  let paths = '';
+  data.forEach(d => {
+    const pct = d.value / total;
+    const a1 = angle;
+    const a2 = angle + pct * 360;
+    const largeArc = pct > 0.5 ? 1 : 0;
+    const x1 = cx + r * Math.cos(a1 * Math.PI / 180);
+    const y1 = cy + r * Math.sin(a1 * Math.PI / 180);
+    const x2 = cx + r * Math.cos(a2 * Math.PI / 180);
+    const y2 = cy + r * Math.sin(a2 * Math.PI / 180);
+    paths += '<path d="M ' + x1 + ' ' + y1 + ' A ' + r + ' ' + r + ' 0 ' + largeArc + ' 1 ' + x2 + ' ' + y2 + '" fill="none" stroke="' + d.color + '" stroke-width="' + sw + '"/>';
+    angle = a2;
+  });
+  paths += '<text x="' + cx + '" y="' + (cy + 1) + '" text-anchor="middle" dominant-baseline="middle" fill="var(--text-primary)" font-size="' + (size * 0.14) + '" font-weight="700">' + total + '</text>';
+  paths += '<text x="' + cx + '" y="' + (cy + size * 0.12) + '" text-anchor="middle" dominant-baseline="middle" fill="var(--text-secondary)" font-size="' + (size * 0.075) + '">tasks</text>';
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '">' + paths + '</svg>';
+}
+
+// Events
+document.getElementById('viewToggle').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-view]');
+  if (!btn) return;
+  document.querySelectorAll('#viewToggle button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentView = btn.dataset.view;
+  render();
+});
+
+// Theme
+(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('gantt_theme') || 'dark'); })();
+
+render();
+</script>
+</body>
+</html>

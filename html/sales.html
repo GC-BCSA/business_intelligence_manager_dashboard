@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales Analytics</title>
+<script src="../data/sales_data.js"></script>
+<style>
+  :root, [data-theme="dark"] {
+    --bg-primary: #0f1923;
+    --bg-secondary: #152232;
+    --bg-tertiary: #1c2e42;
+    --text-primary: #d8dee9;
+    --text-secondary: #7b8da2;
+    --text-muted: #4e6275;
+    --border-color: #243447;
+    --accent: #2f7bbf;
+    --accent-hover: #3d8fd4;
+    --accent-subtle: rgba(47, 123, 191, 0.10);
+    --row-hover: rgba(47, 123, 191, 0.08);
+    --green: #4CAF50;
+    --orange: #FF9800;
+    --red: #F44336;
+    --ring-track: rgba(255,255,255,0.08);
+  }
+  [data-theme="light"] {
+    --bg-primary: #f4f6f9;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #e9edf2;
+    --text-primary: #1a2332;
+    --text-secondary: #5a6a7e;
+    --text-muted: #8896a6;
+    --border-color: #d0d7e0;
+    --accent: #2468a8;
+    --accent-hover: #1b5690;
+    --accent-subtle: rgba(36, 104, 168, 0.08);
+    --row-hover: rgba(36, 104, 168, 0.06);
+    --green: #388E3C;
+    --orange: #F57C00;
+    --red: #D32F2F;
+    --ring-track: rgba(0,0,0,0.06);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var(--bg-primary); color:var(--text-primary); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+  .toolbar { display:flex; align-items:center; gap:12px; padding:10px 20px; background:var(--bg-secondary); border-bottom:1px solid var(--border-color); flex-shrink:0; flex-wrap:wrap; }
+  .toolbar h1 { font-size:18px; font-weight:600; margin-right:auto; white-space:nowrap; }
+  .view-toggle { display:flex; border:1px solid var(--border-color); border-radius:6px; overflow:hidden; }
+  .view-toggle button { background:transparent; color:var(--text-secondary); border:none; padding:6px 14px; font-size:13px; cursor:pointer; transition:all 0.2s; border-right:1px solid var(--border-color); }
+  .view-toggle button:last-child { border-right:none; }
+  .view-toggle button.active, .view-toggle button:hover { background:var(--accent); color:#fff; }
+
+
+  .stats-bar { display:flex; gap:16px; padding:8px 20px; background:var(--bg-tertiary); border-bottom:1px solid var(--border-color); flex-wrap:wrap; flex-shrink:0; }
+  .stat-item { font-size:12px; color:var(--text-secondary); }
+  .stat-item span { font-weight:700; color:var(--text-primary); }
+
+  .main-scroll { flex:1; overflow:hidden; }
+
+  .kpi-strip { display:flex; gap:16px; margin-bottom:20px; flex-wrap:wrap; }
+  .kpi-card { background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:10px; padding:16px 20px; flex:1; min-width:160px; }
+  .kpi-label { font-size:11px; text-transform:uppercase; color:var(--text-muted); letter-spacing:0.5px; font-weight:600; }
+  .kpi-value { font-size:28px; font-weight:700; margin:4px 0 2px; }
+  .kpi-sub { font-size:12px; color:var(--text-secondary); }
+  .kpi-delta { font-size:12px; font-weight:600; }
+  .kpi-delta.up { color:var(--green); }
+  .kpi-delta.down { color:var(--red); }
+
+  .grid-2col { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+  .grid-3col { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px; }
+  @media (max-width:900px) { .grid-2col, .grid-3col { grid-template-columns:1fr; } }
+
+  .panel { background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:10px; overflow:hidden; }
+  .panel-head { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--border-color); }
+  .panel-head h3 { font-size:14px; font-weight:600; }
+  .pill { font-size:11px; background:var(--accent-subtle); color:var(--accent); padding:2px 10px; border-radius:12px; font-weight:600; }
+  .panel-body { padding:14px 18px; }
+
+  .bar-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .bar-label { width:120px; font-size:12px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:0; }
+  .bar-track { flex:1; height:8px; background:var(--ring-track); border-radius:4px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:4px; transition:width 0.4s ease; }
+  .bar-pct { width:50px; text-align:right; font-size:12px; font-weight:600; color:var(--text-primary); flex-shrink:0; }
+
+  /* Chart area */
+  .chart-container { position:relative; }
+  .chart-svg { width:100%; display:block; }
+  .chart-tooltip { position:fixed; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px; padding:8px 12px; font-size:12px; pointer-events:none; z-index:200; box-shadow:0 4px 12px rgba(0,0,0,0.3); display:none; }
+
+  /* Table */
+  .data-table { width:100%; border-collapse:separate; border-spacing:0; font-size:12px; }
+  .data-table th { position:sticky; top:0; background:var(--bg-tertiary); padding:8px 12px; text-align:left; font-weight:600; color:var(--text-secondary); text-transform:uppercase; font-size:11px; letter-spacing:0.5px; border-bottom:2px solid var(--border-color); cursor:pointer; white-space:nowrap; user-select:none; }
+  .data-table th:hover { color:var(--text-primary); }
+  .data-table th .sort-arrow { margin-left:4px; opacity:0.4; }
+  .data-table th.sorted .sort-arrow { opacity:1; color:var(--accent); }
+  .data-table td { padding:7px 12px; border-bottom:1px solid var(--border-color); white-space:nowrap; }
+  .data-table tr:hover td { background:var(--row-hover); }
+  .status-badge { padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; }
+  .status-badge.completed { background:rgba(76,175,80,0.15); color:var(--green); }
+  .status-badge.returned { background:rgba(244,67,54,0.15); color:var(--red); }
+  .status-badge.forecasted { background:rgba(255,152,0,0.15); color:var(--orange); }
+
+  .ring-wrap { position:relative; display:inline-flex; align-items:center; justify-content:center; }
+  .ring-pct { position:absolute; font-size:14px; font-weight:700; }
+
+  .donut-row { display:flex; align-items:center; gap:24px; justify-content:center; }
+  .donut-wrap { position:relative; width:120px; height:120px; flex-shrink:0; }
+  .donut-wrap svg { transform:rotate(-90deg); }
+  .donut-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .donut-pct { font-size:22px; font-weight:700; }
+  .donut-lbl { font-size:10px; color:var(--text-muted); }
+  .donut-legend { display:flex; flex-direction:column; gap:6px; }
+  .donut-legend-item { display:flex; align-items:center; gap:8px; font-size:12px; }
+  .donut-legend-dot { width:10px; height:10px; border-radius:3px; flex-shrink:0; }
+  .donut-legend-val { margin-left:auto; font-weight:700; min-width:24px; text-align:right; }
+
+  .tab-bar { display:flex; gap:2px; padding:0 20px; background:var(--bg-secondary); border-bottom:1px solid var(--border-color); flex-shrink:0; }
+  .tab-btn { background:transparent; border:none; color:var(--text-secondary); padding:10px 18px; font-size:13px; cursor:pointer; border-bottom:2px solid transparent; transition:all 0.2s; }
+  .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+  .tab-btn:hover { color:var(--text-primary); }
+  .tab-slider-viewport { overflow:hidden; flex:1; position:relative; }
+  .tab-slider-track { display:flex; will-change:transform; height:100%; }
+  .tab-panel { min-width:100%; width:100%; flex-shrink:0; box-sizing:border-box; overflow-y:auto; overflow-x:hidden; padding:20px; }
+
+  .search-box input { background:var(--bg-tertiary); border:1px solid var(--border-color); color:var(--text-primary); padding:6px 12px; border-radius:6px; font-size:13px; width:180px; }
+  .search-box input:focus { outline:none; border-color:var(--accent); }
+
+  .sparkline { display:inline-block; vertical-align:middle; }
+  .mini-bar { display:inline-block; width:4px; margin-right:1px; border-radius:2px; vertical-align:bottom; }
+
+  .main-scroll::-webkit-scrollbar { width:8px; height:8px; }
+  .main-scroll::-webkit-scrollbar-track { background:var(--bg-primary); }
+  .main-scroll::-webkit-scrollbar-thumb { background:var(--border-color); border-radius:4px; }
+  *::-webkit-scrollbar { width:8px; height:8px; }
+  *::-webkit-scrollbar-track { background:var(--bg-primary); }
+  *::-webkit-scrollbar-thumb { background:var(--border-color); border-radius:4px; }
+
+  /* ── Dashboard grid views ── */
+  .dash-grid { display:grid; gap:12px; }
+  .dash-row { display:grid; gap:12px; }
+  .dash-2row { grid-template-rows:1fr 1fr; }
+  .dash-3col { grid-template-columns:240px 1fr 280px; }
+  .dash-2col-side { grid-template-columns:320px 1fr; }
+  .dash-2col-even { grid-template-columns:1fr 1fr; }
+  .dash-top3 { grid-template-columns:260px 1fr 260px; }
+  @media(max-width:1000px) { .dash-3col,.dash-2col-side,.dash-2col-even,.dash-top3 { grid-template-columns:1fr; } }
+
+  .dcard { background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:10px; padding:20px; display:flex; flex-direction:column; overflow:hidden; }
+  .dcard-title { font-size:13px; font-weight:700; color:var(--text-muted); margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px; }
+
+  .dbig { font-size:48px; font-weight:800; line-height:1; }
+  .dbig .sym { font-size:28px; font-weight:700; vertical-align:super; margin-right:2px; }
+  .dbig .unit { font-size:22px; font-weight:600; }
+  .dmid { font-size:32px; font-weight:700; line-height:1; }
+  .dmid .sym { font-size:18px; vertical-align:super; }
+  .dmid .unit { font-size:16px; font-weight:600; }
+  .dsub { font-size:13px; color:var(--text-secondary); margin-top:3px; }
+  .ddelta { font-size:13px; font-weight:700; margin-top:4px; }
+  .ddelta.up { color:var(--green); }
+  .ddelta.down { color:var(--red); }
+
+  .dprog { height:5px; border-radius:3px; background:var(--ring-track); margin-top:8px; overflow:hidden; }
+  .dprog-fill { height:100%; border-radius:3px; background:var(--accent); }
+  .dprog-meta { display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-top:3px; }
+
+  .dbar-row { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .dbar-label { width:120px; font-size:12px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:0; }
+  .dbar-track { flex:1; height:7px; background:var(--ring-track); border-radius:4px; overflow:hidden; }
+  .dbar-fill { height:100%; border-radius:4px; background:var(--accent); }
+  .dbar-val { min-width:60px; text-align:right; font-size:13px; font-weight:700; flex-shrink:0; }
+
+  .dlegend { display:flex; gap:14px; margin-bottom:6px; justify-content:flex-end; }
+  .dlegend-item { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--text-secondary); }
+  .dlegend-dot { width:8px; height:8px; border-radius:50%; }
+
+  .dkpi-stack { display:flex; flex-direction:column; gap:10px; }
+  .dkpi-box { background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:10px; padding:14px 18px; }
+  .dkpi-box-title { font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:6px; }
+  .dkpi-pair { display:flex; gap:16px; align-items:baseline; }
+
+  .dlb-row { display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--border-color); }
+  .dlb-row:last-child { border-bottom:none; }
+  .dlb-rank { width:24px; text-align:center; font-size:12px; color:var(--text-muted); font-weight:700; flex-shrink:0; }
+  .dlb-name { flex:1; font-size:13px; font-weight:500; }
+  .dlb-val { font-size:14px; font-weight:700; }
+
+  .drep-cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:12px; align-content:start; }
+  .drep-card { display:flex; flex-direction:column; }
+  .drep-avatar { width:100%; aspect-ratio:1.3; border-radius:8px; background:var(--bg-tertiary); margin-bottom:12px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .drep-avatar svg { width:50px; height:50px; opacity:0.15; }
+
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <h1>Sales Analytics</h1>
+  <div class="search-box"><input type="text" id="searchInput" placeholder="Search transactions..."></div>
+</div>
+<div class="tab-bar">
+  <button class="tab-btn active" data-tab="overview">Overview</button>
+  <button class="tab-btn" data-tab="reps">Rep Performance</button>
+  <button class="tab-btn" data-tab="products">Products</button>
+  <button class="tab-btn" data-tab="accounts">Accounts</button>
+  <button class="tab-btn" data-tab="transactions">Transactions</button>
+  <button class="tab-btn" data-tab="teamboard">Team Board</button>
+  <button class="tab-btn" data-tab="prodperf">Product Perf</button>
+</div>
+<div class="stats-bar" id="statsBar"></div>
+<div class="main-scroll tab-slider-viewport">
+  <div class="tab-slider-track" id="tabTrack">
+  <div class="tab-panel" id="tab-overview"></div>
+  <div class="tab-panel" id="tab-reps"></div>
+  <div class="tab-panel" id="tab-products"></div>
+  <div class="tab-panel" id="tab-accounts"></div>
+  <div class="tab-panel" id="tab-transactions"></div>
+  <div class="tab-panel" id="tab-teamboard"></div>
+  <div class="tab-panel" id="tab-prodperf"></div>
+  </div>
+</div>
+<div class="chart-tooltip" id="tooltip"></div>
+
+<script>
+// ─── CSV Parser ───
+function parseCSVLine(line){const r=[];let c='',q=false;for(let i=0;i<line.length;i++){const ch=line[i];if(q){if(ch==='"'&&line[i+1]==='"'){c+='"';i++}else if(ch==='"'){q=false}else{c+=ch}}else{if(ch==='"'){q=true}else if(ch===','){r.push(c);c=''}else{c+=ch}}}r.push(c);return r}
+function parseCSV(text){const lines=text.trim().split(/\r?\n/);if(lines.length<2)return[];const headers=parseCSVLine(lines[0]).map(h=>h.trim());const result=[];for(let i=1;i<lines.length;i++){const vals=parseCSVLine(lines[i]);if(vals.length<2)continue;const row={};headers.forEach((h,idx)=>{row[h]=(vals[idx]||'').trim()});result.push(row)}return result}
+function sanitize(s){if(!s)return'';const el=document.createElement('span');el.textContent=s;return el.innerHTML}
+function fmtMoney(n){if(n>=1e6)return'$'+(n/1e6).toFixed(2)+'M';if(n>=1e3)return'$'+(n/1e3).toFixed(1)+'K';return'$'+n.toFixed(2)}
+function fmtMoneyFull(n){return'$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function fmtDate(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+function fmtShort(d){return d.toLocaleDateString('en-US',{month:'short',year:'numeric'})}
+
+// ─── Theme ───
+(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('gantt_theme') || 'dark'); })();
+
+// ─── Load Data ───
+const PALETTE=(function(){const b=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#2f7bbf';return[b,b,b,b,b,b,b,b,b,b,b,b,b,b,b]})();
+
+let txns=[], reps=[], accounts=[], contacts=[];
+const today=new Date();today.setHours(0,0,0,0);
+
+if(window.__SALES_DATA_CSV__){
+  const raw=parseCSV(window.__SALES_DATA_CSV__);
+  txns=raw.map(r=>({
+    id:r['Transaction ID'],date:new Date(r['Date']),accountId:r['Account ID'],accountName:r['Account Name'],
+    repId:r['Rep ID'],repName:r['Rep Name'],repRole:r['Rep Role'],
+    product:r['Product'],productCode:r['Product Code'],
+    qty:parseInt(r['Quantity'])||0,unitPrice:parseFloat(r['Unit Price'])||0,amount:parseFloat(r['Amount'])||0,
+    status:r['Status'],isFuture:r['Is Future']==='Yes'
+  }));
+}
+if(window.__SALES_REPS_CSV__){
+  reps=parseCSV(window.__SALES_REPS_CSV__).map(r=>({
+    id:r['Rep ID'],name:r['Name'],role:r['Role'],hireDate:new Date(r['Hire Date']),quota:parseFloat(r['Annual Quota (Base)'])||0
+  }));
+}
+if(window.__SALES_ACCOUNTS_CSV__){
+  accounts=parseCSV(window.__SALES_ACCOUNTS_CSV__).map(r=>({
+    id:r['Account ID'],name:r['Account Name'],industry:r['Industry'],segment:r['Segment'],region:r['Region'],
+    contactId:r['Contact ID'],contactName:r['Contact Name'],weight:parseFloat(r['Revenue Weight'])||0,openDate:new Date(r['Account Open Date'])
+  }));
+}
+if(window.__SALES_CONTACTS_CSV__){
+  contacts=parseCSV(window.__SALES_CONTACTS_CSV__).map(r=>({
+    id:r['Contact ID'],name:r['Full Name'],title:r['Title'],email:r['Email'],phone:r['Phone'],address:r['Address']
+  }));
+}
+
+// ─── Date shift: anchor last historical date to today ───
+if(txns.length>0){
+  const histDates=txns.filter(t=>!t.isFuture).map(t=>t.date.getTime());
+  if(histDates.length>0){
+    const dataToday=Math.max(...histDates);
+    const shiftMs=today.getTime()-dataToday;
+    if(shiftMs!==0){
+      txns.forEach(t=>{t.date=new Date(t.date.getTime()+shiftMs)});
+      reps.forEach(r=>{if(r.hireDate)r.hireDate=new Date(r.hireDate.getTime()+shiftMs)});
+      accounts.forEach(a=>{if(a.openDate)a.openDate=new Date(a.openDate.getTime()+shiftMs)});
+    }
+  }
+}
+
+const historical=txns.filter(t=>!t.isFuture);
+const forecast=txns.filter(t=>t.isFuture);
+const completed=historical.filter(t=>t.status==='Completed');
+const returned=historical.filter(t=>t.status==='Returned');
+
+const thisYear=today.getFullYear();
+const ytdTxns=completed.filter(t=>t.date.getFullYear()===thisYear && t.date<=today);
+const lastYearTxns=completed.filter(t=>t.date.getFullYear()===thisYear-1);
+const totalRevenue=completed.reduce((s,t)=>s+t.amount,0);
+const ytdRevenue=ytdTxns.reduce((s,t)=>s+t.amount,0);
+const lastYearRevenue=lastYearTxns.reduce((s,t)=>s+t.amount,0);
+const lastYearSamePeriod=lastYearTxns.filter(t=>{const d=new Date(t.date);d.setFullYear(d.getFullYear()+1);return d<=today});
+const lySPRevenue=lastYearSamePeriod.reduce((s,t)=>s+t.amount,0);
+const yoyGrowth=lySPRevenue>0?((ytdRevenue-lySPRevenue)/lySPRevenue*100):0;
+const returnRate=historical.length>0?(returned.length/historical.length*100):0;
+const avgDealSize=completed.length>0?(totalRevenue/completed.length):0;
+
+document.getElementById('statsBar').innerHTML=
+  '<div class="stat-item">Total Transactions: <span>'+txns.length.toLocaleString()+'</span></div>'+
+  '<div class="stat-item">Historical: <span>'+historical.length.toLocaleString()+'</span></div>'+
+  '<div class="stat-item">Forecast: <span>'+forecast.length.toLocaleString()+'</span></div>'+
+  '<div class="stat-item">Total Revenue: <span>'+fmtMoney(totalRevenue)+'</span></div>'+
+  '<div class="stat-item">YTD '+thisYear+': <span>'+fmtMoney(ytdRevenue)+'</span></div>'+
+  '<div class="stat-item">Return Rate: <span>'+returnRate.toFixed(1)+'%</span></div>';
+
+// ─── Helpers ───
+function ringHTML(pct,color,size,sw){
+  const r=(size-sw)/2,c=2*Math.PI*r,a=(pct/100)*c;
+  return'<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'" style="transform:rotate(-90deg)"><circle cx="'+(size/2)+'" cy="'+(size/2)+'" r="'+r+'" fill="none" stroke="var(--ring-track)" stroke-width="'+sw+'"/><circle cx="'+(size/2)+'" cy="'+(size/2)+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'" stroke-dasharray="'+a+' '+(c-a)+'" stroke-linecap="round"/></svg>';
+}
+
+function sparkBars(values,maxV,w,h,color){
+  const bw=Math.max(2,Math.floor(w/values.length)-1);
+  let svg='<svg width="'+w+'" height="'+h+'" class="sparkline">';
+  values.forEach((v,i)=>{const bh=maxV>0?Math.max(1,(v/maxV)*h):1;svg+='<rect x="'+(i*(bw+1))+'" y="'+(h-bh)+'" width="'+bw+'" height="'+bh+'" rx="1" fill="'+color+'" opacity="0.7"/>'});
+  return svg+'</svg>';
+}
+
+function monthlyRevenue(txnList,startYear,endYear){
+  const months={};
+  for(let y=startYear;y<=endYear;y++)for(let m=0;m<12;m++){const key=y+'-'+(m<9?'0':'')+(m+1);months[key]=0}
+  txnList.forEach(t=>{const k=t.date.getFullYear()+'-'+(t.date.getMonth()<9?'0':'')+(t.date.getMonth()+1);if(months[k]!==undefined)months[k]+=t.amount});
+  return months;
+}
+
+// ═══ TAB: OVERVIEW ═══
+(function(){
+  const el=document.getElementById('tab-overview');
+  const minYear=Math.min(...completed.map(t=>t.date.getFullYear()));
+  const maxYear=thisYear;
+  const monthly=monthlyRevenue(completed,minYear,maxYear);
+  const monthKeys=Object.keys(monthly).sort();
+  const monthVals=monthKeys.map(k=>monthly[k]);
+  const maxMo=Math.max(...monthVals,1);
+
+  const yearRevs={};
+  completed.forEach(t=>{const y=t.date.getFullYear();yearRevs[y]=(yearRevs[y]||0)+t.amount});
+  const years=Object.keys(yearRevs).sort();
+
+  let h='<div class="kpi-strip">';
+  h+='<div class="kpi-card"><div class="kpi-label">Total Revenue</div><div class="kpi-value">'+fmtMoney(totalRevenue)+'</div><div class="kpi-sub">'+completed.length.toLocaleString()+' transactions</div></div>';
+  h+='<div class="kpi-card"><div class="kpi-label">YTD '+thisYear+'</div><div class="kpi-value">'+fmtMoney(ytdRevenue)+'</div><div class="kpi-delta '+(yoyGrowth>=0?'up':'down')+'">'+(yoyGrowth>=0?'▲':'▼')+' '+Math.abs(yoyGrowth).toFixed(1)+'% YoY</div></div>';
+  h+='<div class="kpi-card"><div class="kpi-label">Avg Deal Size</div><div class="kpi-value">'+fmtMoney(avgDealSize)+'</div><div class="kpi-sub">across all completed</div></div>';
+  h+='<div class="kpi-card"><div class="kpi-label">Forecast Revenue</div><div class="kpi-value">'+fmtMoney(forecast.reduce((s,t)=>s+t.amount,0))+'</div><div class="kpi-sub">'+forecast.length+' forecasted txns</div></div>';
+  h+='<div class="kpi-card"><div class="kpi-label">Return Rate</div><div class="kpi-value" style="color:var(--red)">'+returnRate.toFixed(1)+'%</div><div class="kpi-sub">'+returned.length+' returned</div></div>';
+  h+='</div>';
+
+  const chartW=800,chartH=220,padL=60,padR=20,padT=20,padB=40;
+  const drawW=chartW-padL-padR,drawH=chartH-padT-padB;
+  h+='<div class="panel" style="margin-bottom:20px"><div class="panel-head"><h3>Monthly Revenue Trend</h3><span class="pill">'+monthKeys.length+' months</span></div><div class="panel-body"><div class="chart-container">';
+  h+='<svg class="chart-svg" viewBox="0 0 '+chartW+' '+chartH+'">';
+  for(let g=0;g<=4;g++){const y=padT+(drawH/4)*g;const val=maxMo-g*(maxMo/4);h+='<line x1="'+padL+'" y1="'+y+'" x2="'+(chartW-padR)+'" y2="'+y+'" stroke="var(--border-color)" stroke-width="0.5"/><text x="'+(padL-8)+'" y="'+(y+4)+'" text-anchor="end" fill="var(--text-muted)" font-size="10">'+fmtMoney(val)+'</text>'}
+  const bw=Math.max(2,drawW/monthKeys.length-2);
+  monthKeys.forEach((k,i)=>{const v=monthly[k];const bh=maxMo>0?(v/maxMo)*drawH:0;const x=padL+i*(drawW/monthKeys.length)+(drawW/monthKeys.length-bw)/2;const y=padT+drawH-bh;const yr=k.split('-')[0];const color=PALETTE[years.indexOf(yr)%PALETTE.length];h+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" rx="1" fill="'+color+'" opacity="0.75"><title>'+k+': '+fmtMoneyFull(v)+'</title></rect>'});
+  let prevYr='';
+  monthKeys.forEach((k,i)=>{const yr=k.split('-')[0];if(yr!==prevYr){const x=padL+i*(drawW/monthKeys.length);h+='<text x="'+x+'" y="'+(chartH-5)+'" fill="var(--text-secondary)" font-size="10">'+yr+'</text>';prevYr=yr}});
+  h+='</svg></div></div></div>';
+
+  el.innerHTML=h;
+})();
+
+// ═══ TAB: REP PERFORMANCE ═══
+(function(){
+  const el=document.getElementById('tab-reps');
+  const repStats=reps.map(r=>{
+    const rt=completed.filter(t=>t.repId===r.id);
+    const ytd=rt.filter(t=>t.date.getFullYear()===thisYear&&t.date<=today);
+    const rev=rt.reduce((s,t)=>s+t.amount,0);
+    const ytdRev=ytd.reduce((s,t)=>s+t.amount,0);
+    const yearsActive=Math.max(1,thisYear-r.hireDate.getFullYear());
+    const annualizedQuota=r.quota;
+    const monthsInYear=today.getMonth()+1;
+    const proratedQuota=annualizedQuota*(monthsInYear/12);
+    const attainment=proratedQuota>0?(ytdRev/proratedQuota*100):0;
+    const mo={};for(let m=0;m<12;m++){mo[m]=0}
+    ytd.forEach(t=>{mo[t.date.getMonth()]+=t.amount});
+    const moVals=Object.values(mo);
+    return{...r,rev,ytdRev,txnCount:rt.length,avgDeal:rt.length>0?rev/rt.length:0,attainment,moVals,yearsActive,proratedQuota};
+  }).sort((a,b)=>b.ytdRev-a.ytdRev);
+
+  let h='<div class="kpi-strip">';
+  const topRep=repStats[0];
+  if(topRep){
+    h+='<div class="kpi-card"><div class="kpi-label">Top Performer YTD</div><div class="kpi-value" style="font-size:20px">'+sanitize(topRep.name)+'</div><div class="kpi-sub">'+fmtMoney(topRep.ytdRev)+' revenue</div></div>';
+  }
+  const avgAttainment=repStats.length>0?(repStats.reduce((s,r)=>s+r.attainment,0)/repStats.length):0;
+  h+='<div class="kpi-card"><div class="kpi-label">Avg Quota Attainment</div><div class="kpi-value" style="color:'+(avgAttainment>=100?'var(--green)':'var(--orange)')+'">'+avgAttainment.toFixed(1)+'%</div><div class="kpi-sub">prorated YTD</div></div>';
+  h+='<div class="kpi-card"><div class="kpi-label">Active Reps</div><div class="kpi-value">'+reps.length+'</div><div class="kpi-sub">'+reps.filter(r=>r.role==='Manager').length+' managers, '+reps.filter(r=>r.role!=='Manager').length+' reps</div></div>';
+  h+='</div>';
+
+  h+='<div class="panel"><div class="panel-head"><h3>Rep Scorecard</h3><span class="pill">YTD '+thisYear+'</span></div><div class="panel-body" style="overflow-x:auto"><table class="data-table"><thead><tr><th>Rep</th><th>Role</th><th>YTD Revenue</th><th>Quota</th><th>Attainment</th><th>Deals</th><th>Avg Deal</th><th>Monthly Trend</th></tr></thead><tbody>';
+  const maxMoVal=Math.max(...repStats.flatMap(r=>r.moVals),1);
+  repStats.forEach((r,i)=>{
+    const color=PALETTE[i%PALETTE.length];
+    const attColor=r.attainment>=100?'var(--green)':r.attainment>=70?'var(--orange)':'var(--red)';
+    h+='<tr><td style="font-weight:600">'+sanitize(r.name)+'</td><td>'+sanitize(r.role)+'</td><td>'+fmtMoney(r.ytdRev)+'</td><td>'+fmtMoney(r.proratedQuota)+'</td><td style="color:'+attColor+';font-weight:600">'+r.attainment.toFixed(1)+'%</td><td>'+r.txnCount+'</td><td>'+fmtMoney(r.avgDeal)+'</td><td>'+sparkBars(r.moVals,maxMoVal,100,24,color)+'</td></tr>';
+  });
+  h+='</tbody></table></div></div>';
+
+
+
+  el.innerHTML=h;
+})();
+
+// ═══ TAB: PRODUCTS ═══
+(function(){
+  const el=document.getElementById('tab-products');
+  const prodStats={};
+  completed.forEach(t=>{
+    if(!prodStats[t.product])prodStats[t.product]={name:t.product,code:t.productCode,rev:0,qty:0,txns:0,accounts:new Set()};
+    const p=prodStats[t.product];p.rev+=t.amount;p.qty+=t.qty;p.txns++;p.accounts.add(t.accountId);
+  });
+  const products=Object.values(prodStats).sort((a,b)=>b.rev-a.rev);
+  const totalProdRev=products.reduce((s,p)=>s+p.rev,0);
+
+  let h='<div class="kpi-strip">';
+  h+='<div class="kpi-card"><div class="kpi-label">Products</div><div class="kpi-value">'+products.length+'</div><div class="kpi-sub">unique product lines</div></div>';
+  if(products[0]){h+='<div class="kpi-card"><div class="kpi-label">Top Product</div><div class="kpi-value">'+sanitize(products[0].name)+'</div><div class="kpi-sub">'+fmtMoney(products[0].rev)+' ('+(products[0].rev/totalProdRev*100).toFixed(1)+'%)</div></div>'}
+  h+='<div class="kpi-card"><div class="kpi-label">Avg Revenue/Product</div><div class="kpi-value">'+fmtMoney(totalProdRev/Math.max(products.length,1))+'</div><div class="kpi-sub">across all products</div></div>';
+  h+='</div>';
+
+  h+='<div style="overflow-x:auto;flex:1;max-height:calc(100vh - 360px)"><table class="data-table"><thead><tr><th>Product</th><th>Code</th><th>Revenue</th><th>Share</th><th>Qty Sold</th><th>Transactions</th><th>Unique Accounts</th><th>Avg Deal</th></tr></thead><tbody>';
+  products.forEach((p,i)=>{
+    const share=(p.rev/totalProdRev*100).toFixed(1);
+    h+='<tr><td style="font-weight:600"><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:'+PALETTE[i%PALETTE.length]+';margin-right:8px"></span>'+sanitize(p.name)+'</td><td>'+sanitize(p.code)+'</td><td>'+fmtMoney(p.rev)+'</td><td>'+share+'%</td><td>'+p.qty.toLocaleString()+'</td><td>'+p.txns.toLocaleString()+'</td><td>'+p.accounts.size+'</td><td>'+fmtMoney(p.rev/p.txns)+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+
+  el.innerHTML=h;
+})();
+
+// ═══ TAB: ACCOUNTS ═══
+(function(){
+  const el=document.getElementById('tab-accounts');
+  const acctStats={};
+  completed.forEach(t=>{
+    if(!acctStats[t.accountId])acctStats[t.accountId]={id:t.accountId,name:t.accountName,rev:0,txns:0,products:new Set(),reps:new Set(),lastDate:null};
+    const a=acctStats[t.accountId];a.rev+=t.amount;a.txns++;a.products.add(t.product);a.reps.add(t.repName);
+    if(!a.lastDate||t.date>a.lastDate)a.lastDate=t.date;
+  });
+  const acctList=Object.values(acctStats).sort((a,b)=>b.rev-a.rev);
+  const acctMeta={};accounts.forEach(a=>{acctMeta[a.id]=a});
+
+  const segments={};
+  accounts.forEach(a=>{const seg=a.segment;if(!segments[seg])segments[seg]={rev:0,count:0};const at=acctStats[a.id];if(at){segments[seg].rev+=at.rev;segments[seg].count++}});
+
+  let h='<div class="kpi-strip">';
+  h+='<div class="kpi-card"><div class="kpi-label">Total Accounts</div><div class="kpi-value">'+accounts.length+'</div><div class="kpi-sub">'+Object.keys(acctStats).length+' with transactions</div></div>';
+  const enterprise=accounts.filter(a=>a.segment==='Enterprise');
+  const entRev=enterprise.reduce((s,a)=>{const st=acctStats[a.id];return s+(st?st.rev:0)},0);
+  h+='<div class="kpi-card"><div class="kpi-label">Enterprise Revenue</div><div class="kpi-value">'+fmtMoney(entRev)+'</div><div class="kpi-sub">'+enterprise.length+' accounts ('+(entRev/totalRevenue*100).toFixed(1)+'%)</div></div>';
+  if(acctList[0]){h+='<div class="kpi-card"><div class="kpi-label">Largest Account</div><div class="kpi-value" style="font-size:16px">'+sanitize(acctList[0].name)+'</div><div class="kpi-sub">'+fmtMoney(acctList[0].rev)+'</div></div>'}
+  h+='</div>';
+
+
+
+  h+='<div style="overflow-x:auto;flex:1;max-height:calc(100vh - 380px);margin-top:20px"><table class="data-table" id="acctTable"><thead><tr><th>Account</th><th>Segment</th><th>Industry</th><th>Region</th><th>Revenue</th><th>Transactions</th><th>Products</th><th>Last Activity</th></tr></thead><tbody>';
+  acctList.forEach((a,i)=>{
+    const meta=acctMeta[a.id]||{};
+    h+='<tr><td style="font-weight:600">'+sanitize(a.name)+'</td><td>'+sanitize(meta.segment||'')+'</td><td>'+sanitize(meta.industry||'')+'</td><td>'+sanitize(meta.region||'')+'</td><td>'+fmtMoney(a.rev)+'</td><td>'+a.txns+'</td><td>'+a.products.size+'</td><td>'+fmtDate(a.lastDate)+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+
+  el.innerHTML=h;
+})();
+
+// ═══ TAB: TRANSACTIONS ═══
+(function(){
+  const el=document.getElementById('tab-transactions');
+  const PAGE_SIZE=100;
+  let page=0;
+  let sortCol='date';let sortDir=-1;
+  let filtered=[...txns].sort((a,b)=>b.date-a.date);
+
+  function renderTable(){
+    const start=page*PAGE_SIZE;
+    const slice=filtered.slice(start,start+PAGE_SIZE);
+    let h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-size:13px;color:var(--text-secondary)">Showing '+(start+1)+'–'+Math.min(start+PAGE_SIZE,filtered.length)+' of '+filtered.length.toLocaleString()+'</div><div style="display:flex;gap:8px">';
+    if(page>0)h+='<button class="filter-btn" id="prevPage">← Prev</button>';
+    if(start+PAGE_SIZE<filtered.length)h+='<button class="filter-btn" id="nextPage">Next →</button>';
+    h+='</div></div>';
+    h+='<div style="overflow-x:auto;max-height:calc(100vh - 260px)"><table class="data-table" id="txnTable"><thead><tr><th data-col="id">ID <span class="sort-arrow">↕</span></th><th data-col="date">Date <span class="sort-arrow">↕</span></th><th data-col="accountName">Account <span class="sort-arrow">↕</span></th><th data-col="repName">Rep <span class="sort-arrow">↕</span></th><th data-col="product">Product <span class="sort-arrow">↕</span></th><th data-col="qty">Qty <span class="sort-arrow">↕</span></th><th data-col="amount">Amount <span class="sort-arrow">↕</span></th><th data-col="status">Status <span class="sort-arrow">↕</span></th></tr></thead><tbody>';
+    slice.forEach(t=>{
+      const statusClass=t.status.toLowerCase();
+      h+='<tr><td>'+sanitize(t.id)+'</td><td>'+fmtDate(t.date)+'</td><td>'+sanitize(t.accountName)+'</td><td>'+sanitize(t.repName)+'</td><td>'+sanitize(t.product)+'</td><td>'+t.qty.toLocaleString()+'</td><td>'+fmtMoneyFull(t.amount)+'</td><td><span class="status-badge '+statusClass+'">'+sanitize(t.status)+'</span></td></tr>';
+    });
+    h+='</tbody></table></div>';
+    el.innerHTML=h;
+
+    const prev=document.getElementById('prevPage');
+    const next=document.getElementById('nextPage');
+    if(prev)prev.onclick=()=>{page--;renderTable()};
+    if(next)next.onclick=()=>{page++;renderTable()};
+
+    document.querySelectorAll('#txnTable th[data-col]').forEach(th=>{
+      if(th.dataset.col===sortCol)th.classList.add('sorted');
+      th.onclick=()=>{
+        const col=th.dataset.col;
+        if(sortCol===col)sortDir*=-1;else{sortCol=col;sortDir=col==='date'||col==='amount'||col==='qty'?-1:1}
+        filtered.sort((a,b)=>{let va=a[col],vb=b[col];if(col==='date')return(va-vb)*sortDir;if(col==='amount'||col==='qty')return(va-vb)*sortDir;return String(va).localeCompare(String(vb))*sortDir});
+        page=0;renderTable();
+      };
+    });
+  }
+  renderTable();
+
+  document.getElementById('searchInput').addEventListener('input',e=>{
+    const q=e.target.value.toLowerCase();
+    filtered=txns.filter(t=>!q||t.id.toLowerCase().includes(q)||t.accountName.toLowerCase().includes(q)||t.repName.toLowerCase().includes(q)||t.product.toLowerCase().includes(q)||t.status.toLowerCase().includes(q));
+    if(sortCol){filtered.sort((a,b)=>{let va=a[sortCol],vb=b[sortCol];if(sortCol==='date')return(va-vb)*sortDir;if(sortCol==='amount'||sortCol==='qty')return(va-vb)*sortDir;return String(va).localeCompare(String(vb))*sortDir})}
+    page=0;renderTable();
+  });
+})();
+
+// ─── Tab slider (bell-curve easing) ───
+const tabBtns=[...document.querySelectorAll('.tab-btn')];
+const tabTrack=document.getElementById('tabTrack');
+let currentTabIdx=0;let sliding=false;
+function bellEase(t){return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}
+function slideToTab(targetIdx){
+  if(targetIdx===currentTabIdx||sliding)return;
+  sliding=true;
+  const dist=Math.abs(targetIdx-currentTabIdx);
+  const duration=250+dist*80;
+  const startX=currentTabIdx*100;
+  const endX=targetIdx*100;
+  const startTime=performance.now();
+  function tick(now){
+    const elapsed=now-startTime;
+    const p=Math.min(1,elapsed/duration);
+    const ep=bellEase(p);
+    const x=startX+(endX-startX)*ep;
+    tabTrack.style.transform=`translateX(-${x}%)`;
+    if(p<1){requestAnimationFrame(tick)}
+    else{currentTabIdx=targetIdx;sliding=false}
+  }
+  requestAnimationFrame(tick);
+}
+document.querySelector('.tab-bar').addEventListener('click',e=>{const btn=e.target.closest('.tab-btn');if(!btn)return;const idx=tabBtns.indexOf(btn);if(idx<0)return;tabBtns.forEach(b=>b.classList.remove('active'));btn.classList.add('active');slideToTab(idx)});
+
+// ═══ TAB: TEAM BOARD (10-week review, top reps) ═══
+(function(){
+  const el=document.getElementById('tab-teamboard');
+  const tenWeeksAgo=new Date(today);tenWeeksAgo.setDate(tenWeeksAgo.getDate()-70);
+  const thisWeekStart=new Date(today);thisWeekStart.setDate(thisWeekStart.getDate()-thisWeekStart.getDay());
+  const lastWeekStart=new Date(thisWeekStart);lastWeekStart.setDate(lastWeekStart.getDate()-7);
+
+  const pTxns=completed.filter(t=>t.date>=tenWeeksAgo&&t.date<today);
+  const twTxns=completed.filter(t=>t.date>=thisWeekStart&&t.date<today);
+  const lwTxns=completed.filter(t=>t.date>=lastWeekStart&&t.date<thisWeekStart);
+
+  const acctRegion={};accounts.forEach(a=>{acctRegion[a.id]=a.region});
+  const repMap={};
+  reps.forEach(r=>{repMap[r.id]={id:r.id,name:r.name,role:r.role,quota:r.quota,total:0,thisWeek:0,lastWeek:0,weeks:new Array(10).fill(0),region:''}});
+  pTxns.forEach(t=>{if(!repMap[t.repId])return;repMap[t.repId].total+=t.amount;const d=Math.floor((t.date-tenWeeksAgo)/86400000);const w=Math.min(9,Math.floor(d/7));repMap[t.repId].weeks[w]+=t.amount;if(acctRegion[t.accountId])repMap[t.repId].region=acctRegion[t.accountId]});
+  twTxns.forEach(t=>{if(repMap[t.repId])repMap[t.repId].thisWeek+=t.amount});
+  lwTxns.forEach(t=>{if(repMap[t.repId])repMap[t.repId].lastWeek+=t.amount});
+
+  const repArr=Object.values(repMap).sort((a,b)=>b.total-a.total);
+  const teamTotal=repArr.reduce((s,r)=>s+r.total,0);
+  const teamTW=repArr.reduce((s,r)=>s+r.thisWeek,0);
+  const teamLW=repArr.reduce((s,r)=>s+r.lastWeek,0);
+  const weeklyTeam=new Array(10).fill(0);
+  repArr.forEach(r=>r.weeks.forEach((v,i)=>weeklyTeam[i]+=v));
+  const teamQuota=reps.reduce((s,r)=>s+r.quota,0);
+  const periodTarget=teamQuota*(70/365);
+  const teamPct=Math.min(100,(teamTotal/periodTarget)*100);
+
+  function sparkSVG(data,w,h){
+    const max=Math.max(...data,1);const n=data.length;const sx=w/(n-1);
+    let p='';data.forEach((v,i)=>{const x=i*sx;const y=h-(v/max)*(h-4)-2;p+=(i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1)});
+    return`<svg style="width:100%;height:${h}px" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${p}" fill="none" stroke="var(--accent)" stroke-width="1.5"/></svg>`;
+  }
+  function weeklyChart(data,w,h){
+    const max=Math.max(...data,1);const n=data.length;const pad={t:18,r:10,b:22,l:50};
+    const cw=w-pad.l-pad.r,ch=h-pad.t-pad.b;const sx=cw/(n-1);
+    let s=`<svg style="width:100%;height:100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">`;
+    [0,max*0.5,max].forEach(v=>{const y=pad.t+ch-(v/max)*ch;s+=`<line x1="${pad.l}" y1="${y}" x2="${w-pad.r}" y2="${y}" stroke="var(--border-color)" stroke-width="0.5"/><text x="${pad.l-6}" y="${y+3}" text-anchor="end" fill="var(--text-muted)" font-size="9">${fmtMoney(v)}</text>`});
+    let p='';data.forEach((v,i)=>{const x=pad.l+i*sx;const y=pad.t+ch-(v/max)*(ch-4)-2;p+=(i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1)});
+    s+=`<path d="${p}" fill="none" stroke="var(--accent)" stroke-width="2"/>`;
+    const sd=new Date(tenWeeksAgo);for(let i=0;i<n;i+=2){const d=new Date(sd);d.setDate(d.getDate()+i*7);s+=`<text x="${pad.l+i*sx}" y="${h-pad.b+13}" text-anchor="middle" fill="var(--text-muted)" font-size="9">${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</text>`}
+    return s+'</svg>';
+  }
+
+  function fm(n){if(n>=1e6)return{s:'$',n:(n/1e6).toFixed(1),u:'M'};if(n>=1e3)return{s:'$',n:(n/1e3).toFixed(1),u:'K'};return{s:'$',n:n.toFixed(0),u:''}}
+  const ttf=fm(teamTotal),twf=fm(teamTW);
+  const wDelta=teamTW-teamLW;
+
+  let h=`<div class="dash-row dash-2col-side" style="min-height:calc(98vh - 150px)">`;
+  h+=`<div style="display:flex;flex-direction:column;gap:12px">`;
+  h+=`<div class="dcard"><div class="dcard-title">Team Sales</div><div style="display:flex;gap:20px;align-items:flex-end;margin-bottom:8px"><div><div class="dbig"><span class="sym">${ttf.s}</span>${ttf.n}<span class="unit">${ttf.u}</span></div><div class="dsub">10-week total</div></div><div><div class="dmid"><span class="sym">${twf.s}</span>${twf.n}<span class="unit">${twf.u}</span></div><div class="dsub">this week</div><div class="ddelta ${wDelta>=0?'up':'down'}">${wDelta>=0?'▲':'▼'} ${fmtMoney(Math.abs(wDelta))} v last week</div></div></div><div class="dprog"><div class="dprog-fill" style="width:${teamPct.toFixed(0)}%"></div></div><div class="dprog-meta"><span>${teamPct.toFixed(0)}%</span><span>${fmtMoney(periodTarget)}</span></div></div>`;
+  h+=`<div class="dcard" style="flex:1"><div class="dcard-title">Leaderboard (10 weeks)</div>`;
+  repArr.filter(r=>r.total>0).slice(0,8).forEach((r,i)=>{h+=`<div class="dlb-row"><div class="dlb-rank">${i+1}</div><div class="dlb-name">${sanitize(r.name)}</div><div class="dlb-val">${fmtMoney(r.total)}</div></div>`});
+  h+=`</div>`;
+  h+=`</div>`;
+  h+=`<div class="drep-cards" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));align-content:stretch">`;
+  const display=repArr.filter(r=>r.total>0).slice(0,5);
+  const repTarget=500000*(70/365);
+  display.forEach((r,i)=>{
+    const rpct=Math.min(100,(r.total/repTarget)*100);const pf=fm(r.total);const wf=fm(r.thisWeek);const lwf=fm(r.lastWeek);
+    const wowDelta=r.thisWeek-r.lastWeek;const wowPct=r.lastWeek>0?((wowDelta/r.lastWeek)*100).toFixed(0):'--';
+    const avgWeekly=r.total/10;const awf=fm(avgWeekly);const bestWeek=Math.max(...r.weeks);const bwf=fm(bestWeek);
+    const badge=i<3?['1st','2nd','3rd'][i]+' ':i<5?['4th','5th'][i-3]+' ':'';
+    const avatarMap={'Layla Drummond':'4f','Priya':'3f','Sandra':'2f','Derek':'1m','Marcus':'2m'};
+    const avatarKey=Object.keys(avatarMap).find(k=>r.name.includes(k));
+    const avatarHTML=avatarKey?`<img src="../images/${avatarMap[avatarKey]}.webp" style="width:100%;height:100%;object-fit:cover">`:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`;
+    h+=`<div class="dcard drep-card" style="flex:1"><div style="margin-bottom:4px"><div style="font-size:16px;font-weight:700">${badge}${sanitize(r.name)}</div><div style="font-size:12px;color:var(--text-secondary)">${sanitize(r.region||r.role)}</div></div>`;
+    h+=`<div class="drep-avatar">${avatarHTML}</div>`;
+    h+=`<div style="margin-bottom:8px"><div class="dbig" style="font-size:36px"><span class="sym" style="font-size:20px">${pf.s}</span>${pf.n}<span class="unit" style="font-size:16px">${pf.u}</span></div><div class="dsub">10-week total</div><div class="dprog"><div class="dprog-fill" style="width:${rpct.toFixed(0)}%"></div></div><div class="dprog-meta"><span>${rpct.toFixed(0)}%</span><span>${fmtMoney(repTarget)}</span></div></div>`;
+    h+=`<div style="margin-bottom:14px"><div class="dmid" style="font-size:28px"><span class="sym" style="font-size:16px">${wf.s}</span>${wf.n}<span class="unit" style="font-size:14px">${wf.u}</span></div><div class="dsub">this week <span class="ddelta ${wowDelta>=0?'up':'down'}" style="font-size:11px">${wowDelta>=0?'▲':'▼'} ${wowPct}% v last</span></div></div>`;
+    h+=`<div style="margin-bottom:14px"><div style="font-size:18px;font-weight:600;color:var(--text-color)"><span style="font-size:12px;color:var(--text-secondary)">$</span>${lwf.n}<span style="font-size:11px;color:var(--text-secondary)">${lwf.u}</span></div><div class="dsub">last week</div></div>`;
+    h+=`<div style="margin-bottom:14px"><div style="font-size:18px;font-weight:600;color:var(--text-color)"><span style="font-size:12px;color:var(--text-secondary)">$</span>${awf.n}<span style="font-size:11px;color:var(--text-secondary)">${awf.u}</span></div><div class="dsub">avg / week</div></div>`;
+    h+=`<div style="margin-bottom:14px"><div style="font-size:14px;font-weight:600;color:var(--text-color)">Best week: <span style="color:var(--accent)">${bwf.s}${bwf.n}${bwf.u}</span></div></div>`;
+    h+=`<div style="margin-top:auto">${sparkSVG(r.weeks,220,36)}</div></div>`;
+  });
+  h+=`</div></div>`;
+  el.innerHTML=h;
+})();
+
+// ═══ TAB: PRODUCT PERF (52-week monthly by product, YoY) ═══
+(function(){
+  const el=document.getElementById('tab-prodperf');
+  const t52s=new Date(today);t52s.setDate(t52s.getDate()-364);
+  const t104s=new Date(t52s);t104s.setDate(t104s.getDate()-365);
+
+  const curP=completed.filter(t=>t.date>=t52s&&t.date<today);
+
+  const prodRev={},prodUnits={};
+  curP.forEach(t=>{prodRev[t.product]=(prodRev[t.product]||0)+t.amount;prodUnits[t.product]=(prodUnits[t.product]||0)+t.qty});
+  const prodRevSorted=Object.entries(prodRev).sort((a,b)=>b[1]-a[1]);
+  const prodUnitsSorted=Object.entries(prodUnits).sort((a,b)=>b[1]-a[1]);
+  const topPR=prodRevSorted.slice(0,5);const topPU=prodUnitsSorted.slice(0,5);
+  const maxPR=topPR[0]?topPR[0][1]:1;const maxPU=topPU[0]?topPU[0][1]:1;
+
+  const tRev=curP.reduce((s,t)=>s+t.amount,0);
+  const tUnits=curP.reduce((s,t)=>s+t.qty,0);
+  const target=Math.ceil(tRev/1e5)*1e5*1.05;
+  const pct=Math.min(100,(tRev/target)*100);
+
+  function monthKey(d){return d.getFullYear()*12+d.getMonth()}
+  function monthLbl(mk){return['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mk%12]}
+
+  const curMonthTotal={},curMonthProd={};
+  curP.forEach(t=>{const k=monthKey(t.date);curMonthTotal[k]=(curMonthTotal[k]||0)+t.amount;if(!curMonthProd[t.product])curMonthProd[t.product]={};curMonthProd[t.product][k]=(curMonthProd[t.product][k]||0)+t.amount});
+  const curKeys=Object.keys(curMonthTotal).map(Number).sort((a,b)=>a-b);
+  const labels=curKeys.map(k=>monthLbl(k));
+  const totalVals=curKeys.map(k=>curMonthTotal[k]||0);
+  const top4=prodRevSorted.slice(0,4).map(p=>p[0]);
+  const LC=['var(--accent)','var(--green)','var(--orange)','var(--text-secondary)'];
+
+  function lineChart(vals,lbls,color){
+    const W=600,H=280,pad={t:20,r:15,b:30,l:55};
+    const cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;const n=vals.length;if(n<2)return'';
+    const max=Math.max(...vals,1);const sx=cw/(n-1);
+    const gy=[0,max*0.25,max*0.5,max*0.75,max];
+    let s=`<svg class="chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">`;
+    gy.forEach(v=>{const y=pad.t+ch-(v/max)*ch;s+=`<line x1="${pad.l}" y1="${y}" x2="${W-pad.r}" y2="${y}" stroke="var(--border-color)" stroke-width="0.5"/><text x="${pad.l-6}" y="${y+3}" text-anchor="end" fill="var(--text-muted)" font-size="9">${fmtMoney(v)}</text>`});
+    let ap=`M${pad.l},${pad.t+ch}`;vals.forEach((v,i)=>{const x=pad.l+i*sx;const y=pad.t+ch-(v/max)*(ch-4)-2;ap+=` L${x.toFixed(1)},${y.toFixed(1)}`});
+    ap+=` L${pad.l+(n-1)*sx},${pad.t+ch} Z`;s+=`<path d="${ap}" fill="${color}" opacity="0.1"/>`;
+    let lp='';vals.forEach((v,i)=>{const x=pad.l+i*sx;const y=pad.t+ch-(v/max)*(ch-4)-2;lp+=(i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1)});
+    s+=`<path d="${lp}" fill="none" stroke="${color}" stroke-width="2"/>`;
+    lbls.forEach((l,i)=>{if(n>14&&i%2!==0)return;s+=`<text x="${pad.l+i*sx}" y="${H-pad.b+14}" text-anchor="middle" fill="var(--text-muted)" font-size="9">${l}</text>`});
+    return s+'</svg>';
+  }
+
+  function multiLine(prods,pd,keys,colors){
+    const W=600,H=280,pad={t:20,r:15,b:30,l:55};
+    const cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;const n=keys.length;if(n<2)return'';
+    let max=0;prods.forEach(p=>{keys.forEach(k=>{max=Math.max(max,(pd[p]||{})[k]||0)})});if(!max)max=1;
+    const sx=cw/(n-1);
+    let s=`<svg class="chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">`;
+    [0,max*0.25,max*0.5,max*0.75,max].forEach(v=>{const y=pad.t+ch-(v/max)*ch;s+=`<line x1="${pad.l}" y1="${y}" x2="${W-pad.r}" y2="${y}" stroke="var(--border-color)" stroke-width="0.5"/><text x="${pad.l-6}" y="${y+3}" text-anchor="end" fill="var(--text-muted)" font-size="9">${fmtMoney(v)}</text>`});
+    prods.forEach((p,pi)=>{const d=pd[p]||{};let lp='';keys.forEach((k,i)=>{const v=d[k]||0;const x=pad.l+i*sx;const y=pad.t+ch-(v/max)*(ch-4)-2;lp+=(i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1)});s+=`<path d="${lp}" fill="none" stroke="${colors[pi]}" stroke-width="2"/>`});
+    keys.map(k=>monthLbl(k)).forEach((l,i)=>{if(n>14&&i%2!==0)return;s+=`<text x="${pad.l+i*sx}" y="${H-pad.b+14}" text-anchor="middle" fill="var(--text-muted)" font-size="9">${l}</text>`});
+    return s+'</svg>';
+  }
+
+  function fm(n){if(n>=1e6)return{s:'$',n:(n/1e6).toFixed(1),u:'M'};if(n>=1e3)return{s:'$',n:(n/1e3).toFixed(1),u:'K'};return{s:'$',n:n.toFixed(0),u:''}}
+  function fmtNum(n){if(n>=1e3)return(n/1e3).toFixed(1)+'K';return n.toLocaleString()}
+  const rf=fm(tRev);
+
+  const priorP=completed.filter(t=>t.date>=t104s&&t.date<t52s);
+  const priorMonthTotal={};
+  priorP.forEach(t=>{const k=monthKey(t.date);priorMonthTotal[k]=(priorMonthTotal[k]||0)+t.amount});
+  const priorVals=curKeys.map(k=>priorMonthTotal[k-12]||0);
+  const totalPrior=priorP.reduce((s,t)=>s+t.amount,0);
+  const yoyDelta=totalPrior>0?((tRev-totalPrior)/totalPrior*100):0;
+
+  function yoyLineChart(curV,priorV,lbls){
+    const W=600,H=280,pad={t:20,r:15,b:30,l:55};
+    const cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;const n=curV.length;if(n<2)return'';
+    const max=Math.max(...curV,...priorV,1);const sx=cw/(n-1);
+    const gy=[0,max*0.25,max*0.5,max*0.75,max];
+    let s=`<svg class="chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">`;
+    gy.forEach(v=>{const y=pad.t+ch-(v/max)*ch;s+=`<line x1="${pad.l}" y1="${y}" x2="${W-pad.r}" y2="${y}" stroke="var(--border-color)" stroke-width="0.5"/><text x="${pad.l-6}" y="${y+3}" text-anchor="end" fill="var(--text-muted)" font-size="9">${fmtMoney(v)}</text>`});
+    let pp='';priorV.forEach((v,i)=>{const x=pad.l+i*sx;const y=pad.t+ch-(v/max)*(ch-4)-2;pp+=(i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1)});
+    s+=`<path d="${pp}" fill="none" stroke="var(--text-muted)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.5"/>`;
+    let ap=`M${pad.l},${pad.t+ch}`;curV.forEach((v,i)=>{const x=pad.l+i*sx;const y=pad.t+ch-(v/max)*(ch-4)-2;ap+=` L${x.toFixed(1)},${y.toFixed(1)}`});
+    ap+=` L${pad.l+(n-1)*sx},${pad.t+ch} Z`;s+=`<path d="${ap}" fill="var(--accent)" opacity="0.1"/>`;
+    let lp='';curV.forEach((v,i)=>{const x=pad.l+i*sx;const y=pad.t+ch-(v/max)*(ch-4)-2;lp+=(i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1)});
+    s+=`<path d="${lp}" fill="none" stroke="var(--accent)" stroke-width="2"/>`;
+    lbls.forEach((l,i)=>{if(n>14&&i%2!==0)return;s+=`<text x="${pad.l+i*sx}" y="${H-pad.b+14}" text-anchor="middle" fill="var(--text-muted)" font-size="9">${l}</text>`});
+    return s+'</svg>';
+  }
+
+  const avgMonthlyRev=curKeys.length>0?(tRev/curKeys.length):0;
+  const bestMonthIdx=totalVals.indexOf(Math.max(...totalVals));
+  const bestMonthLabel=bestMonthIdx>=0?labels[bestMonthIdx]:'—';
+  const bestMonthVal=bestMonthIdx>=0?totalVals[bestMonthIdx]:0;
+  const totalTxnsCur=curP.length;
+  const avgDealCur=totalTxnsCur>0?(tRev/totalTxnsCur):0;
+  const topRevProd=prodRevSorted[0];
+
+  let h=`<div class="dash-grid">`;
+  h+=`<div class="dash-row" style="grid-template-columns:1fr 1fr 1fr;gap:12px">`;
+  h+=`<div class="dcard" style="padding:16px"><div class="dmid"><span class="sym">$</span>${rf.n}<span class="unit">${rf.u}</span></div><div class="dsub" style="margin-bottom:6px">Revenue this year</div><div class="dprog"><div class="dprog-fill" style="width:${pct.toFixed(0)}%;background:var(--green)"></div></div><div class="dprog-meta"><span>${pct.toFixed(0)}%</span><span>${fmtMoney(target)}</span></div><div class="ddelta ${yoyDelta>=0?'up':'down'}" style="margin-top:6px">${yoyDelta>=0?'▲':'▼'} ${Math.abs(yoyDelta).toFixed(1)}% YoY</div><div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-color)"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px"><span style="color:var(--text-secondary)">Avg monthly</span><span style="font-weight:600">${fmtMoney(avgMonthlyRev)}</span></div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px"><span style="color:var(--text-secondary)">Best month</span><span style="font-weight:600">${bestMonthLabel} (${fmtMoney(bestMonthVal)})</span></div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px"><span style="color:var(--text-secondary)">Avg deal</span><span style="font-weight:600">${fmtMoney(avgDealCur)}</span></div><div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text-secondary)">Transactions</span><span style="font-weight:600">${totalTxnsCur.toLocaleString()}</span></div></div></div>`;
+  h+=`<div class="dcard" style="padding:16px"><div class="dmid">${fmtNum(tUnits)}</div><div class="dsub" style="margin-bottom:8px">Units sold this year</div><div class="dcard-title" style="font-size:11px;margin-bottom:6px">Top by units</div>`;
+  topPU.forEach(([name,val])=>{h+=`<div class="dbar-row" style="margin-bottom:8px"><div class="dbar-label" style="width:90px;font-size:11px">${sanitize(name)}</div><div class="dbar-track"><div class="dbar-fill" style="width:${(val/maxPU*100)}%"></div></div><div class="dbar-val" style="font-size:12px;min-width:50px">${val.toLocaleString()}</div></div>`});
+  h+=`</div>`;
+  h+=`<div class="dcard" style="padding:16px">`;
+  if(topRevProd){h+=`<div class="dmid"><span class="sym">$</span>${fm(topRevProd[1]).n}<span class="unit">${fm(topRevProd[1]).u}</span></div><div class="dsub" style="margin-bottom:8px">${sanitize(topRevProd[0])} · top by revenue</div>`}
+  h+=`<div class="dcard-title" style="font-size:11px;margin-bottom:6px">Top by revenue</div>`;
+  topPR.forEach(([name,val])=>{h+=`<div class="dbar-row" style="margin-bottom:8px"><div class="dbar-label" style="width:90px;font-size:11px">${sanitize(name)}</div><div class="dbar-track"><div class="dbar-fill" style="width:${(val/maxPR*100)}%"></div></div><div class="dbar-val" style="font-size:12px;min-width:50px">${fmtMoney(val)}</div></div>`});
+  h+=`</div></div>`;
+  h+=`<div class="dash-row dash-2col-even">`;
+  h+=`<div class="dcard"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div class="dcard-title" style="margin-bottom:0">Monthly Revenue</div><div class="dlegend"><div class="dlegend-item"><div class="dlegend-dot" style="background:var(--accent)"></div>Current</div><div class="dlegend-item"><div class="dlegend-dot" style="background:var(--text-muted);opacity:0.5"></div>Prior Year</div></div></div><div style="flex:1">${yoyLineChart(totalVals,priorVals,labels)}</div></div>`;
+  h+=`<div class="dcard"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div class="dcard-title" style="margin-bottom:0">By Product</div><div class="dlegend">`;
+  top4.forEach((p,i)=>{h+=`<div class="dlegend-item"><div class="dlegend-dot" style="background:${LC[i]}"></div>${sanitize(p)}</div>`});
+  h+=`</div></div><div style="flex:1">${multiLine(top4,curMonthProd,curKeys,LC)}</div></div>`;
+  h+=`</div></div>`;
+  el.innerHTML=h;
+})();
+</script>
+</body>
+</html>

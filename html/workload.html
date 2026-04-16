@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workload</title>
+<script src="../data/data.js"></script>
+<style>
+  :root, [data-theme="dark"] {
+    --bg-primary: #0f1923;
+    --bg-secondary: #152232;
+    --bg-tertiary: #1c2e42;
+    --text-primary: #d8dee9;
+    --text-secondary: #7b8da2;
+    --text-muted: #556a7e;
+    --border-color: #243447;
+    --accent: #2f7bbf;
+    --accent-hover: #3d8fd4;
+    --today-line: #e85d5d;
+    --row-hover: rgba(47, 123, 191, 0.06);
+    --progress-bg: rgba(255,255,255,0.08);
+    --bar-1: rgba(47, 123, 191, 0.55);
+    --bar-2: rgba(47, 123, 191, 0.40);
+    --bar-3: rgba(47, 123, 191, 0.28);
+  }
+  [data-theme="light"] {
+    --bg-primary: #f4f6f9;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #e9edf2;
+    --text-primary: #1a2332;
+    --text-secondary: #5a6a7e;
+    --text-muted: #8a96a6;
+    --border-color: #d0d7e0;
+    --accent: #2468a8;
+    --accent-hover: #1b5690;
+    --today-line: #d94444;
+    --row-hover: rgba(36, 104, 168, 0.04);
+    --progress-bg: rgba(0,0,0,0.06);
+    --bar-1: rgba(36, 104, 168, 0.50);
+    --bar-2: rgba(36, 104, 168, 0.35);
+    --bar-3: rgba(36, 104, 168, 0.22);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-primary); color: var(--text-primary);
+    height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  .toolbar {
+    display: flex; align-items: center; gap: 12px; padding: 10px 20px;
+    background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+  }
+  .toolbar h1 { font-size: 18px; font-weight: 600; margin-right: auto; }
+
+  .stats-bar {
+    display: flex; align-items: center; gap: 20px; padding: 6px 20px;
+    background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);
+    font-size: 12px; color: var(--text-secondary); flex-shrink: 0;
+  }
+  .stats-bar .stat-item span { color: var(--text-primary); font-weight: 600; }
+
+  .swimlane-wrap {
+    flex: 1; display: flex; overflow: hidden;
+  }
+
+  .lane-names {
+    flex-shrink: 0; width: 140px; overflow: hidden;
+    border-right: 1px solid var(--border-color);
+  }
+  .lane-names-head {
+    height: 36px; display: flex; align-items: center; padding: 0 14px;
+    font-size: 11px; font-weight: 600; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color);
+  }
+  .lane-name {
+    display: flex; align-items: center; padding: 0 14px;
+    font-size: 13px; font-weight: 500; border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .lane-name .task-count {
+    margin-left: auto; font-size: 10px; color: var(--text-muted); padding-left: 6px;
+  }
+
+  .lane-timeline {
+    flex: 1; overflow: auto;
+  }
+  .lane-timeline::-webkit-scrollbar { width: 7px; height: 7px; }
+  .lane-timeline::-webkit-scrollbar-track { background: var(--bg-primary); }
+  .lane-timeline::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+
+  .timeline-inner { position: relative; }
+
+  .month-headers {
+    display: flex; height: 36px; background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 5;
+  }
+  .month-label {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; color: var(--text-secondary);
+    border-right: 1px solid var(--border-color); flex-shrink: 0;
+  }
+
+  .gridline {
+    position: absolute; top: 36px; bottom: 0; width: 1px;
+    background: var(--border-color); opacity: 0.4; z-index: 0;
+  }
+  .gridline.month-start { opacity: 0.7; }
+
+  .today-line {
+    position: absolute; top: 0; bottom: 0; width: 2px;
+    background: var(--today-line); z-index: 4; opacity: 0.7;
+  }
+
+  .swim-row {
+    position: relative; border-bottom: 1px solid var(--border-color);
+    transition: background 0.1s;
+  }
+  .swim-row:hover { background: var(--row-hover); }
+
+  .task-bar {
+    position: absolute; border-radius: 4px; cursor: default;
+    display: flex; align-items: center; overflow: hidden;
+    font-size: 11px; white-space: nowrap; transition: filter 0.15s;
+    z-index: 2;
+  }
+  .task-bar:hover { filter: brightness(1.3); z-index: 3; }
+  .task-bar-bg {
+    position: absolute; inset: 0; border-radius: 4px; opacity: 0.85;
+  }
+  .task-bar-progress {
+    position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px;
+  }
+  .task-bar-label {
+    position: relative; z-index: 1; padding: 0 6px;
+    color: var(--text-primary); font-weight: 500;
+    text-overflow: ellipsis; overflow: hidden;
+  }
+
+  .tooltip {
+    display: none; position: fixed; background: var(--bg-secondary);
+    border: 1px solid var(--border-color); border-radius: 8px;
+    padding: 10px 14px; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    font-size: 12px; max-width: 260px; pointer-events: none;
+  }
+  .tooltip.visible { display: block; }
+  .tooltip-title { font-weight: 600; margin-bottom: 4px; }
+  .tooltip-row { color: var(--text-secondary); padding: 1px 0; }
+  .tooltip-progress { margin-top: 6px; height: 4px; background: var(--progress-bg); border-radius: 2px; overflow: hidden; }
+  .tooltip-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <h1>Workload</h1>
+</div>
+
+<div class="stats-bar">
+  <div class="stat-item">Team: <span id="statMembers">0</span></div>
+  <div class="stat-item">Tasks: <span id="statTasks">0</span></div>
+  <div class="stat-item">Active: <span id="statActive">0</span></div>
+  <div class="stat-item">Max concurrent: <span id="statPeak">0</span></div>
+  <div class="stat-item">Avg concurrent: <span id="statAvg">0</span></div>
+</div>
+
+<div class="swimlane-wrap">
+  <div class="lane-names">
+    <div class="lane-names-head">Team</div>
+    <div id="nameList"></div>
+  </div>
+  <div class="lane-timeline" id="timelineScroll">
+    <div class="timeline-inner" id="timelineInner">
+      <div class="month-headers" id="monthHeaders"></div>
+      <div id="swimRows"></div>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
+  const result = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]);
+    if (values.length < 4) continue;
+    const row = {};
+    headers.forEach((h, idx) => { row[h] = (values[idx] || '').trim(); });
+    result.push({
+      name: row.task || row.name || row.title || '',
+      group: row.group || row.category || row.phase || 'Ungrouped',
+      assignee: row.assignee || row.owner || row.resource || '',
+      start: new Date(row.start || row.start_date || row.startdate || ''),
+      end: new Date(row.end || row.end_date || row.enddate || row.finish || ''),
+      progress: Math.min(100, Math.max(0, parseInt(row.progress || row.complete || '0', 10) || 0)),
+      color: null,
+    });
+  }
+  return result.filter(t => t.name && !isNaN(t.start) && !isNaN(t.end));
+}
+function parseCSVLine(line) {
+  const result = []; let current = ''; let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) { if (ch === '"' && line[i+1] === '"') { current += '"'; i++; } else if (ch === '"') { inQuotes = false; } else { current += ch; } }
+    else { if (ch === '"') { inQuotes = true; } else if (ch === ',') { result.push(current); current = ''; } else { current += ch; } }
+  }
+  result.push(current); return result;
+}
+function sanitize(str) { if (!str) return ''; const el = document.createElement('span'); el.textContent = str; return el.innerHTML; }
+function daysBetween(a, b) { return Math.round((b - a) / 86400000); }
+
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+let tasks = [];
+
+if (window.__GANTT_CSV__) {
+  const data = parseCSV(window.__GANTT_CSV__);
+  if (data.length > 0) {
+    const minMs = Math.min(...data.map(t => t.start.getTime()));
+    const maxMs = Math.max(...data.map(t => t.end.getTime()));
+    const pointAt32 = minMs + (maxMs - minMs) * 0.32;
+    const now = new Date(); now.setHours(0,0,0,0);
+    const shiftMs = now.getTime() - pointAt32;
+    data.forEach(t => { t.start = new Date(t.start.getTime() + shiftMs); t.end = new Date(t.end.getTime() + shiftMs); });
+    tasks = data;
+  }
+}
+
+const assignees = [...new Set(tasks.map(t => t.assignee).filter(Boolean))].sort();
+const today = new Date(); today.setHours(0,0,0,0);
+
+const DAY_PX = 6;
+const BAR_H = 22;
+const BAR_GAP = 3;
+const ROW_PAD = 6;
+
+const allMin = tasks.length ? new Date(Math.min(...tasks.map(t => t.start.getTime()))) : today;
+const allMax = tasks.length ? new Date(Math.max(...tasks.map(t => t.end.getTime()))) : today;
+const timeStart = new Date(allMin); timeStart.setDate(timeStart.getDate() - 14);
+const timeEnd = new Date(allMax); timeEnd.setDate(timeEnd.getDate() + 14);
+const totalDays = daysBetween(timeStart, timeEnd);
+const totalWidth = totalDays * DAY_PX;
+
+function dayToX(d) { return daysBetween(timeStart, d) * DAY_PX; }
+
+function layoutTasks(assignee) {
+  const pTasks = tasks.filter(t => t.assignee === assignee).sort((a, b) => a.start - b.start || a.end - b.end);
+  const rows = [];
+  pTasks.forEach(t => {
+    let placed = false;
+    for (let r = 0; r < rows.length; r++) {
+      const last = rows[r][rows[r].length - 1];
+      if (t.start >= last.task.end) {
+        rows[r].push({ task: t, row: r });
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      rows.push([{ task: t, row: rows.length }]);
+    }
+  });
+  const flat = [];
+  rows.forEach((r, ri) => r.forEach(item => flat.push({ task: item.task, row: ri })));
+  return { items: flat, rowCount: rows.length, taskCount: pTasks.length };
+}
+
+function render() {
+  const nameList = document.getElementById('nameList');
+  const monthHeaders = document.getElementById('monthHeaders');
+  const swimRows = document.getElementById('swimRows');
+  const inner = document.getElementById('timelineInner');
+
+  nameList.innerHTML = '';
+  monthHeaders.innerHTML = '';
+  swimRows.innerHTML = '';
+  inner.style.width = totalWidth + 'px';
+
+  let gridHtml = '';
+  const mStart = new Date(timeStart.getFullYear(), timeStart.getMonth(), 1);
+  while (mStart <= timeEnd) {
+    const mEnd = new Date(mStart.getFullYear(), mStart.getMonth() + 1, 0);
+    const x1 = Math.max(0, dayToX(mStart));
+    const x2 = Math.min(totalWidth, dayToX(mEnd) + DAY_PX);
+    const w = x2 - x1;
+    const label = MONTH_NAMES[mStart.getMonth()] + (mStart.getMonth() === 0 || mStart <= timeStart ? ' ' + mStart.getFullYear() : '');
+    monthHeaders.innerHTML += '<div class="month-label" style="width:' + w + 'px;min-width:' + w + 'px">' + label + '</div>';
+    if (dayToX(mStart) > 0) {
+      gridHtml += '<div class="gridline month-start" style="left:' + dayToX(mStart) + 'px"></div>';
+    }
+    mStart.setMonth(mStart.getMonth() + 1);
+  }
+
+  const todayX = dayToX(today);
+  if (todayX >= 0 && todayX <= totalWidth) {
+    gridHtml += '<div class="today-line" style="left:' + todayX + 'px"></div>';
+  }
+
+  let peakConcurrent = 0;
+  let totalConcurrent = 0;
+  let concurrentSamples = 0;
+
+  const layouts = {};
+  let maxRows = 1;
+  assignees.forEach(a => { layouts[a] = layoutTasks(a); if (layouts[a].rowCount > maxRows) maxRows = layouts[a].rowCount; });
+  const laneH = maxRows * (BAR_H + BAR_GAP) + ROW_PAD * 2;
+
+  let rowsHtml = '';
+  assignees.forEach(a => {
+    const layout = layouts[a];
+
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'lane-name';
+    nameDiv.style.height = laneH + 'px';
+    nameDiv.innerHTML = sanitize(a) + '<span class="task-count">' + layout.taskCount + '</span>';
+    nameList.appendChild(nameDiv);
+
+    totalConcurrent += layout.rowCount;
+    concurrentSamples++;
+
+    let barsHtml = '';
+    layout.items.forEach(item => {
+      const t = item.task;
+      const x = dayToX(t.start);
+      const w = Math.max(DAY_PX, dayToX(t.end) - x);
+      const y = ROW_PAD + item.row * (BAR_H + BAR_GAP);
+      const barStyle = item.row === 0 ? 'var(--bar-1)' : item.row === 1 ? 'var(--bar-2)' : 'var(--bar-3)';
+
+      barsHtml += '<div class="task-bar" style="left:' + x + 'px;top:' + y + 'px;width:' + w + 'px;height:' + BAR_H + 'px" ' +
+        'data-name="' + sanitize(t.name) + '" data-group="' + sanitize(t.group) + '" data-progress="' + t.progress + '" ' +
+        'data-start="' + MONTH_NAMES[t.start.getMonth()] + ' ' + t.start.getDate() + '" ' +
+        'data-end="' + MONTH_NAMES[t.end.getMonth()] + ' ' + t.end.getDate() + '" ' +
+        'data-assignee="' + sanitize(a) + '" data-days="' + daysBetween(t.start, t.end) + '">' +
+        '<div class="task-bar-bg" style="background:' + barStyle + '"></div>' +
+        '<div class="task-bar-progress" style="width:' + t.progress + '%;background:var(--accent);opacity:0.45"></div>' +
+        '<div class="task-bar-label">' + sanitize(t.name) + '</div>' +
+        '</div>';
+    });
+
+    rowsHtml += '<div class="swim-row" style="height:' + laneH + 'px">' + barsHtml + '</div>';
+  });
+
+  swimRows.innerHTML = gridHtml + rowsHtml;
+
+  peakConcurrent = maxRows;
+
+  document.getElementById('statMembers').textContent = assignees.length;
+  document.getElementById('statTasks').textContent = tasks.length;
+  document.getElementById('statActive').textContent = tasks.filter(t => t.progress > 0 && t.progress < 100).length;
+  document.getElementById('statPeak').textContent = peakConcurrent;
+  document.getElementById('statAvg').textContent = concurrentSamples ? (totalConcurrent / concurrentSamples).toFixed(1) : '0';
+
+  const scroll = document.getElementById('timelineScroll');
+  scroll.scrollLeft = Math.max(0, todayX - scroll.clientWidth * 0.3);
+}
+
+// Tooltip
+document.getElementById('swimRows').addEventListener('mouseover', e => {
+  const bar = e.target.closest('.task-bar');
+  if (!bar) return;
+  const tooltip = document.getElementById('tooltip');
+  tooltip.innerHTML =
+    '<div class="tooltip-title">' + bar.dataset.name + '</div>' +
+    '<div class="tooltip-row">' + bar.dataset.group + '</div>' +
+    '<div class="tooltip-row">' + bar.dataset.assignee + ' &middot; ' + bar.dataset.days + ' days</div>' +
+    '<div class="tooltip-row">' + bar.dataset.start + ' &rarr; ' + bar.dataset.end + '</div>' +
+    '<div class="tooltip-progress"><div class="tooltip-progress-fill" style="width:' + bar.dataset.progress + '%"></div></div>' +
+    '<div class="tooltip-row" style="margin-top:2px">' + bar.dataset.progress + '% complete</div>';
+  tooltip.classList.add('visible');
+});
+document.getElementById('swimRows').addEventListener('mouseout', e => {
+  if (!e.target.closest('.task-bar')) return;
+  document.getElementById('tooltip').classList.remove('visible');
+});
+document.addEventListener('mousemove', e => {
+  const tooltip = document.getElementById('tooltip');
+  if (!tooltip.classList.contains('visible')) return;
+  let x = e.clientX + 14, y = e.clientY + 14;
+  const r = tooltip.getBoundingClientRect();
+  if (x + r.width > window.innerWidth) x = e.clientX - r.width - 14;
+  if (y + r.height > window.innerHeight) y = e.clientY - r.height - 14;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+});
+
+document.getElementById('timelineScroll').addEventListener('scroll', function() {
+  document.getElementById('nameList').style.transform = 'translateY(-' + this.scrollTop + 'px)';
+});
+
+// Theme
+(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('gantt_theme') || 'dark'); })();
+
+render();
+</script>
+</body>
+</html>
